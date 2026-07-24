@@ -68,6 +68,8 @@ export function ForgeView({
   onRedo,
   canUndo,
   canRedo,
+  tags,
+  onTagsChange,
   remixParentId,
   onPublished,
   signedIn,
@@ -79,6 +81,8 @@ export function ForgeView({
   onRedo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  tags: string;
+  onTagsChange: (tags: string) => void;
   remixParentId: string | null;
   onPublished: () => void;
   signedIn: boolean;
@@ -93,7 +97,6 @@ export function ForgeView({
   const [newSize, setNewSize] = useState("16");
   const [showAscii, setShowAscii] = useState(false);
   const [exportScale, setExportScale] = useState("8");
-  const [tagsText, setTagsText] = useState("");
   const [status, setStatus] = useState<string | null>(null);
 
   const { recipe, errors } = useMemo(() => parseSource(source), [source]);
@@ -169,12 +172,12 @@ export function ForgeView({
       onNeedAuth();
       return;
     }
-    const tags = tagsText
+    const tagList = tags
       .split(",")
       .map((t) => t.trim().toLowerCase())
       .filter(Boolean);
     try {
-      await Api.publish(recipe.name?.trim() || "untitled", recipe, tags, remixParentId);
+      await Api.publish(recipe.name?.trim() || "untitled", recipe, tagList, remixParentId);
       onPublished(); // navigates to the feed — the new sprite is the first card
     } catch (err) {
       setStatus(`publish failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -386,8 +389,8 @@ export function ForgeView({
               </Label>
               <Input
                 id="tags"
-                value={tagsText}
-                onChange={(e) => setTagsText(e.target.value)}
+                value={tags}
+                onChange={(e) => onTagsChange(e.target.value)}
                 placeholder="item, weapon"
                 className="w-48"
               />

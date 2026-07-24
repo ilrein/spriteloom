@@ -61,6 +61,7 @@ export function App() {
   const [searchInput, setSearchInput] = useState(query);
   const [tags, setTags] = useState<{ tag: string; count: number }[]>([]);
   const [remixParentId, setRemixParentId] = useState<string | null>(null);
+  const [draftTags, setDraftTags] = useState("");
 
   // recipe source with undo/redo history (rapid edits within 600ms coalesce,
   // so textarea typing doesn't flood the stack while each paint stroke is one step)
@@ -117,6 +118,7 @@ export function App() {
   function handleRemix(sprite: SpriteItem) {
     setSource(JSON.stringify({ ...sprite.recipe, name: `${sprite.name} remix` }, null, 2));
     setRemixParentId(sprite.id);
+    setDraftTags(sprite.tags.join(", "));
     navigate(VIEW_PATH.forge);
   }
 
@@ -209,6 +211,8 @@ export function App() {
               onRedo={redo}
               canUndo={hist.idx > 0}
               canRedo={hist.idx < hist.stack.length - 1}
+              tags={draftTags}
+              onTagsChange={setDraftTags}
               remixParentId={remixParentId}
               onPublished={() => {
                 setRemixParentId(null);
