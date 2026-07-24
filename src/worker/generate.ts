@@ -7,7 +7,7 @@ import { runRecipe, type Recipe } from "../engine/engine";
 import { validateRecipe, asRecipe } from "../engine/validate";
 
 export const LOOMBOT_USER_ID = "seed-user-loombot";
-const MODEL = "@cf/openai/gpt-oss-120b";
+const MODEL = "@cf/moonshotai/kimi-k2.7-code";
 const AI_GATEWAY = "spriteloom";
 const BATCH_TARGET = 6;
 
@@ -94,19 +94,79 @@ function extractJson(raw: string): unknown {
   const start = raw.indexOf("{");
   const end = raw.lastIndexOf("}");
   if (start === -1 || end <= start) throw new Error("no JSON object in model output");
-  return JSON.parse(raw.slice(start, end + 1));
+  try {
+    return JSON.parse(raw.slice(start, end + 1));
+  } catch {
+    return { sprites: salvageSprites(raw) };
+  }
+}
+
+/**
+ * Salvage complete objects from a possibly truncated/corrupt sprites array:
+ * bracket-match each top-level object after "sprites": [ and parse them
+ * individually, keeping the survivors.
+ */
+function salvageSprites(raw: string): unknown[] {
+  const anchor = raw.indexOf('"sprites"');
+  const arrayStart = anchor === -1 ? -1 : raw.indexOf("[", anchor);
+  if (arrayStart === -1) return [];
+  const out: unknown[] = [];
+  let i = arrayStart + 1;
+  while (i < raw.length) {
+    while (i < raw.length && raw[i] !== "{" && raw[i] !== "]") i++;
+    if (i >= raw.length || raw[i] === "]") break;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    const objStart = i;
+    let objEnd = -1;
+    for (; i < raw.length; i++) {
+      const ch = raw[i]!;
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') inString = !inString;
+      if (inString) continue;
+      if (ch === "{") depth++;
+      else if (ch === "}") {
+        depth--;
+        if (depth === 0) {
+          objEnd = i;
+          break;
+        }
+      }
+    }
+    if (objEnd === -1) break; // truncated mid-object — stop
+    try {
+      out.push(JSON.parse(raw.slice(objStart, objEnd + 1)));
+    } catch {
+      /* skip malformed object, keep scanning */
+    }
+    i = objEnd + 1;
+  }
+  return out;
 }
 
 function aiText(result: unknown): string {
   const r = result as Record<string, unknown>;
-  if (typeof r.response === "string") return r.response;
+  if (typeof r.response === "string" && r.response.length > 0) return r.response;
   const output = r.output as { content?: { text?: string }[] }[] | undefined;
   if (Array.isArray(output)) {
     const texts = output.flatMap((o) => o.content ?? []).map((c) => c.text ?? "");
-    if (texts.length > 0) return texts.join("");
+    if (texts.join("").length > 0) return texts.join("");
   }
-  const choices = r.choices as { message?: { content?: string } }[] | undefined;
+  const choices = r.choices as { message?: { content?: string }; finish_reason?: string }[] | undefined;
   if (choices?.[0]?.message?.content) return choices[0].message.content;
+  if (choices?.[0]) {
+    throw new Error(
+      `model returned empty content (finish_reason=${choices[0].finish_reason ?? "?"}) — likely max_tokens exhausted by reasoning`,
+    );
+  }
   return JSON.stringify(result);
 }
 
@@ -120,11 +180,15 @@ export async function generateBatch(ai: AiBinding, db: D1Like): Promise<Generati
   const pick = THEMES[Math.floor(Math.random() * THEMES.length)]!;
   const result = await runModel(ai, {
     messages: [{ role: "user", content: prompt(pick.theme, pick.palette) }],
-    max_tokens: 8000,
+    // generous budget: reasoning models spend tokens thinking before the JSON
+    max_tokens: 24000,
   });
 
   const parsed = extractJson(aiText(result)) as { sprites?: unknown[] };
   const candidates = Array.isArray(parsed.sprites) ? parsed.sprites : [];
+  if (candidates.length === 0) {
+    throw new Error("model output parsed but contained no sprites");
+  }
 
   const report: GenerationReport = { theme: pick.theme, published: [], rejected: [] };
   const statements: unknown[] = [];
