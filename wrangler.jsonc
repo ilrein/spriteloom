@@ -13,7 +13,9 @@
     "binding": "ASSETS",
     // worker-first everywhere so the www/workers.dev → spriteloom.app
     // canonical redirect applies to page loads, not just /api/*
-    "run_worker_first": true
+    "run_worker_first": true,
+    // client-side routes (/forge, /agent) fall back to index.html
+    "not_found_handling": "single-page-application"
   },
   "d1_databases": [
     {

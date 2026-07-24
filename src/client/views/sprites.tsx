@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 export function SpritesView({
   q,
   tag,
+  user,
   onTag,
   onRemix,
   onNeedAuth,
@@ -19,6 +20,7 @@ export function SpritesView({
 }: {
   q: string;
   tag: string | null;
+  user: string | null;
   onTag: (tag: string | null) => void;
   onRemix: (sprite: SpriteItem) => void;
   onNeedAuth: () => void;
@@ -37,7 +39,13 @@ export function SpritesView({
       setLoading(true);
       setError(null);
       try {
-        const data = await Api.listSprites({ sort, page: nextPage, q: q || undefined, tag: tag ?? undefined });
+        const data = await Api.listSprites({
+          sort,
+          page: nextPage,
+          q: q || undefined,
+          tag: tag ?? undefined,
+          user: user ?? undefined,
+        });
         setSprites((prev) => (replace ? data.sprites : [...prev, ...data.sprites]));
         setPage(nextPage);
         setHasMore(data.hasMore);
@@ -47,7 +55,7 @@ export function SpritesView({
         setLoading(false);
       }
     },
-    [sort, q, tag],
+    [sort, q, tag, user],
   );
 
   useEffect(() => {
@@ -84,6 +92,7 @@ export function SpritesView({
           </Badge>
         )}
         {q && <span className="text-sm text-muted-foreground">searching “{q}”</span>}
+        {user && <span className="text-sm text-muted-foreground">by @{user}</span>}
         <div className="ml-auto flex gap-1">
           <Button
             size="icon-sm"

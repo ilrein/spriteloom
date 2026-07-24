@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { LogIn, LogOut, Search } from "lucide-react";
 import { EXAMPLES } from "../engine/examples";
 import { Api, type SpriteItem } from "./api";
@@ -21,18 +22,62 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 
-export type View = "forge" | "sprites" | "agent";
+export type View = "sprites" | "forge" | "agent";
+
+export const VIEW_PATH: Record<View, string> = { sprites: "/", forge: "/forge", agent: "/agent" };
+
+const INITIAL_SOURCE = JSON.stringify(EXAMPLES[0], null, 2);
+
+interface History {
+  stack: string[];
+  idx: number;
+  lastAt: number;
+}
 
 export function App() {
-  const [view, setView] = useState<View>("sprites");
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+
+  const view: View = location.pathname.startsWith("/forge")
+    ? "forge"
+    : location.pathname.startsWith("/agent")
+      ? "agent"
+      : "sprites";
+  const tag = searchParams.get("tag");
+  const query = searchParams.get("q") ?? "";
+  const byUser = searchParams.get("user");
+
   const [me, setMe] = useState<string | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
-  const [searchInput, setSearchInput] = useState("");
-  const [query, setQuery] = useState("");
-  const [tag, setTag] = useState<string | null>(null);
+  const [searchInput, setSearchInput] = useState(query);
   const [tags, setTags] = useState<{ tag: string; count: number }[]>([]);
-  const [source, setSource] = useState(() => JSON.stringify(EXAMPLES[0], null, 2));
   const [remixParentId, setRemixParentId] = useState<string | null>(null);
+
+  // recipe source with undo/redo history (rapid edits within 600ms coalesce,
+  // so textarea typing doesn't flood the stack while each paint stroke is one step)
+  const [hist, setHist] = useState<History>({ stack: [INITIAL_SOURCE], idx: 0, lastAt: 0 });
+  const source = hist.stack[hist.idx]!;
+
+  const setSource = useCallback((text: string, opts?: { coalesce?: boolean }) => {
+    setHist((h) => {
+      const now = Date.now();
+      const stack = h.stack.slice(0, h.idx + 1);
+      if (opts?.coalesce && now - h.lastAt < 600 && h.idx > 0) {
+        stack[stack.length - 1] = text;
+        return { stack, idx: stack.length - 1, lastAt: now };
+      }
+      stack.push(text);
+      if (stack.length > 200) stack.shift();
+      return { stack, idx: stack.length - 1, lastAt: now };
+    });
+  }, []);
+
+  const undo = useCallback(() => setHist((h) => (h.idx > 0 ? { ...h, idx: h.idx - 1, lastAt: 0 } : h)), []);
+  const redo = useCallback(
+    () => setHist((h) => (h.idx < h.stack.length - 1 ? { ...h, idx: h.idx + 1, lastAt: 0 } : h)),
+    [],
+  );
 
   const refreshSession = useCallback(async () => {
     try {
@@ -57,21 +102,33 @@ export function App() {
     void refreshTags();
   }, [refreshSession, refreshTags]);
 
+  useEffect(() => {
+    setSearchInput(query);
+  }, [query]);
+
   function handleRemix(sprite: SpriteItem) {
     setSource(JSON.stringify({ ...sprite.recipe, name: `${sprite.name} remix` }, null, 2));
     setRemixParentId(sprite.id);
-    setView("forge");
+    navigate(VIEW_PATH.forge);
   }
 
-  function handleTag(next: string | null) {
-    setTag(next);
-    if (next !== null) setView("sprites");
+  function spritesUrl(next: { q?: string | null; tag?: string | null; user?: string | null }): string {
+    const params = new URLSearchParams();
+    const q = next.q === undefined ? query : next.q;
+    const t = next.tag === undefined ? tag : next.tag;
+    const u = next.user === undefined ? byUser : next.user;
+    if (q) params.set("q", q);
+    if (t) params.set("tag", t);
+    if (u) params.set("user", u);
+    const search = params.toString();
+    return search ? `/?${search}` : "/";
   }
+
+  const handleTag = (next: string | null) => navigate(spritesUrl({ tag: next }));
 
   function submitSearch(e: React.FormEvent) {
     e.preventDefault();
-    setQuery(searchInput.trim());
-    setView("sprites");
+    navigate(spritesUrl({ q: searchInput.trim() || null, user: null }));
   }
 
   async function signOut() {
@@ -81,7 +138,13 @@ export function App() {
 
   return (
     <SidebarProvider>
-      <AppSidebar view={view} onNavigate={setView} tags={tags} activeTag={tag} onTag={handleTag} />
+      <AppSidebar
+        view={view}
+        onNavigate={(v) => navigate(VIEW_PATH[v])}
+        tags={tags}
+        activeTag={tag}
+        onTag={handleTag}
+      />
       <SidebarInset>
         <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b-2 bg-background px-4">
           <SidebarTrigger />
@@ -94,7 +157,7 @@ export function App() {
               value={searchInput}
               onChange={(e) => {
                 setSearchInput(e.target.value);
-                if (e.target.value === "") setQuery("");
+                if (e.target.value === "" && query) navigate(spritesUrl({ q: null }));
               }}
               placeholder="search sprites, makers, tags…"
               className="pl-8"
@@ -114,15 +177,8 @@ export function App() {
                   <PixelAvatar username={me} size={20} /> @{me}
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => {
-                    setQuery("");
-                    setSearchInput("");
-                    setTag(null);
-                    setView("sprites");
-                  }}
-                >
-                  my feed
+                <DropdownMenuItem onClick={() => navigate(spritesUrl({ q: null, tag: null, user: me }))}>
+                  my sprites
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => void signOut()}>
                   <LogOut className="size-4" /> sign out
@@ -140,9 +196,11 @@ export function App() {
           {view === "forge" ? (
             <ForgeView
               source={source}
-              onSourceChange={(text) => {
-                setSource(text);
-              }}
+              onSourceChange={setSource}
+              onUndo={undo}
+              onRedo={redo}
+              canUndo={hist.idx > 0}
+              canRedo={hist.idx < hist.stack.length - 1}
               remixParentId={remixParentId}
               onPublished={() => {
                 setRemixParentId(null);
@@ -155,6 +213,7 @@ export function App() {
             <SpritesView
               q={query}
               tag={tag}
+              user={byUser}
               onTag={handleTag}
               onRemix={handleRemix}
               onNeedAuth={() => setAuthOpen(true)}

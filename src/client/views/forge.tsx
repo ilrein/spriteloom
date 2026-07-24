@@ -1,5 +1,23 @@
-import { useMemo, useState } from "react";
-import { Braces, Brush, Download, PaintBucket, Trash2, Undo2, Upload } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Braces,
+  Brush,
+  Circle,
+  Download,
+  Eraser,
+  FlipHorizontal2,
+  Grid3x3,
+  PaintBucket,
+  Pipette,
+  Redo2,
+  Slash,
+  Square,
+  Trash2,
+  Undo2,
+  Upload,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 import {
   MAX_COLORS,
   resolvePalette,
@@ -32,16 +50,34 @@ function parseSource(text: string): { recipe: Recipe | null; errors: string[] } 
   return errors.length > 0 ? { recipe: null, errors } : { recipe: asRecipe(parsed), errors: [] };
 }
 
+const TOOLS: { id: PaintTool; icon: typeof Brush; label: string; key: string }[] = [
+  { id: "pencil", icon: Brush, label: "pencil", key: "b" },
+  { id: "eraser", icon: Eraser, label: "eraser", key: "e" },
+  { id: "fill", icon: PaintBucket, label: "bucket fill", key: "g" },
+  { id: "line", icon: Slash, label: "line (drag)", key: "l" },
+  { id: "rect", icon: Square, label: "rectangle (drag; hold shift to fill)", key: "r" },
+  { id: "ellipse", icon: Circle, label: "ellipse (drag; hold shift to fill)", key: "o" },
+  { id: "picker", icon: Pipette, label: "eyedropper", key: "i" },
+];
+
 export function ForgeView({
   source,
   onSourceChange,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
   remixParentId,
   onPublished,
   signedIn,
   onNeedAuth,
 }: {
   source: string;
-  onSourceChange: (text: string) => void;
+  onSourceChange: (text: string, opts?: { coalesce?: boolean }) => void;
+  onUndo: () => void;
+  onRedo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
   remixParentId: string | null;
   onPublished: () => void;
   signedIn: boolean;
@@ -50,6 +86,9 @@ export function ForgeView({
   const [mode, setMode] = useState<"paint" | "json">("paint");
   const [tool, setTool] = useState<PaintTool>("pencil");
   const [activeV, setActiveV] = useState(1);
+  const [symmetry, setSymmetry] = useState(false);
+  const [showGrid, setShowGrid] = useState(true);
+  const [zoom, setZoom] = useState(0);
   const [newSize, setNewSize] = useState("16");
   const [showAscii, setShowAscii] = useState(false);
   const [exportScale, setExportScale] = useState("8");
@@ -59,6 +98,9 @@ export function ForgeView({
   const { recipe, errors } = useMemo(() => parseSource(source), [source]);
   const palette = recipe ? resolvePalette(recipe.palette) : null;
   const brush = palette ? Math.min(activeV, palette.colors.length - 1) : 1;
+  const pixel = recipe
+    ? Math.max(4, Math.min(40, Math.floor(416 / recipe.size) + zoom * 2))
+    : 16;
 
   function updateRecipe(mutate: (r: Recipe) => void): void {
     if (!recipe) return;
@@ -67,15 +109,39 @@ export function ForgeView({
     onSourceChange(JSON.stringify(next, null, 2));
   }
 
-  const commitOp = (op: Op) => updateRecipe((r) => r.ops.push(op));
+  const commitOps = (ops: Op[]) => updateRecipe((r) => r.ops.push(...ops));
+
+  // Aseprite-style single-key shortcuts (skipped while typing in a field)
+  useEffect(() => {
+    function onKey(e: KeyboardEvent): void {
+      const target = e.target as HTMLElement;
+      const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+        if (typing && target.tagName === "TEXTAREA") return; // native textarea undo
+        e.preventDefault();
+        if (e.shiftKey) onRedo();
+        else onUndo();
+        return;
+      }
+      if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+      const toolFor = TOOLS.find((t) => t.key === e.key.toLowerCase());
+      if (toolFor) {
+        setTool(toolFor.id);
+        setMode("paint");
+      } else if (e.key.toLowerCase() === "x") {
+        setSymmetry((s) => !s);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onUndo, onRedo]);
 
   function newSprite(): void {
-    const size = Number(newSize);
     onSourceChange(
       JSON.stringify(
         {
           name: "untitled",
-          size,
+          size: Number(newSize),
           palette: recipe?.palette ?? { colors: ["#151515", "#e0e0cc"], transparent: true },
           ops: [],
         },
@@ -118,7 +184,7 @@ export function ForgeView({
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
       <Card className="border-2">
         <CardHeader>
           <CardTitle className="flex flex-wrap items-center gap-2 tracking-[0.3em]">
@@ -141,50 +207,51 @@ export function ForgeView({
           {mode === "paint" ? (
             recipe && palette ? (
               <>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    size="icon-sm"
-                    variant={tool === "pencil" ? "default" : "outline"}
-                    onClick={() => setTool("pencil")}
-                    aria-label="pencil"
-                    title="pencil — index 0 erases"
-                  >
-                    <Brush className="size-4" />
-                  </Button>
-                  <Button
-                    size="icon-sm"
-                    variant={tool === "fill" ? "default" : "outline"}
-                    onClick={() => setTool("fill")}
-                    aria-label="flood fill"
-                    title="flood fill"
-                  >
-                    <PaintBucket className="size-4" />
-                  </Button>
-                  <span className="mx-1 flex items-center gap-1">
-                    {palette.colors.map((color, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setActiveV(i)}
-                        title={i === 0 ? "0 — background (eraser)" : `paint with index ${i}`}
-                        className={cn(
-                          "size-7 border-2",
-                          i === 0 && "pixel-checker",
-                          brush === i ? "border-ring ring-2 ring-ring" : "border-input",
-                        )}
-                        style={i === 0 ? undefined : { background: color }}
-                      />
-                    ))}
-                  </span>
-                  <span className="ml-auto flex gap-1">
+                <div className="flex flex-wrap items-center gap-1">
+                  {TOOLS.map(({ id, icon: Icon, label, key }) => (
                     <Button
+                      key={id}
                       size="icon-sm"
-                      variant="outline"
-                      onClick={() => updateRecipe((r) => void r.ops.pop())}
-                      disabled={recipe.ops.length === 0}
-                      aria-label="undo last op"
-                      title="undo last op"
+                      variant={tool === id ? "default" : "outline"}
+                      onClick={() => setTool(id)}
+                      aria-label={label}
+                      title={`${label} (${key})`}
                     >
+                      <Icon className="size-4" />
+                    </Button>
+                  ))}
+                  <span className="mx-1 h-6 border-l-2" />
+                  <Button
+                    size="icon-sm"
+                    variant={symmetry ? "default" : "outline"}
+                    onClick={() => setSymmetry(!symmetry)}
+                    aria-label="mirror symmetry"
+                    title="mirror symmetry (x)"
+                  >
+                    <FlipHorizontal2 className="size-4" />
+                  </Button>
+                  <Button
+                    size="icon-sm"
+                    variant={showGrid ? "default" : "outline"}
+                    onClick={() => setShowGrid(!showGrid)}
+                    aria-label="toggle grid"
+                    title="toggle grid"
+                  >
+                    <Grid3x3 className="size-4" />
+                  </Button>
+                  <span className="mx-1 h-6 border-l-2" />
+                  <Button size="icon-sm" variant="outline" onClick={() => setZoom((z) => z - 1)} aria-label="zoom out" title="zoom out">
+                    <ZoomOut className="size-4" />
+                  </Button>
+                  <Button size="icon-sm" variant="outline" onClick={() => setZoom((z) => z + 1)} aria-label="zoom in" title="zoom in">
+                    <ZoomIn className="size-4" />
+                  </Button>
+                  <span className="ml-auto flex gap-1">
+                    <Button size="icon-sm" variant="outline" onClick={onUndo} disabled={!canUndo} aria-label="undo" title="undo (⌘z)">
                       <Undo2 className="size-4" />
+                    </Button>
+                    <Button size="icon-sm" variant="outline" onClick={onRedo} disabled={!canRedo} aria-label="redo" title="redo (⌘⇧z)">
+                      <Redo2 className="size-4" />
                     </Button>
                     <Button
                       size="icon-sm"
@@ -199,17 +266,46 @@ export function ForgeView({
                   </span>
                 </div>
 
-                <PaintCanvas
-                  recipe={recipe}
-                  pixel={Math.max(6, Math.min(26, Math.floor(416 / recipe.size)))}
-                  activeV={brush}
-                  tool={tool}
-                  onCommit={commitOp}
-                />
+                <div className="flex flex-wrap items-center gap-1">
+                  <span className="mr-1 text-xs tracking-[0.3em] text-muted-foreground">INK</span>
+                  {palette.colors.map((color, i) => (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        setActiveV(i);
+                        if (tool === "eraser") setTool("pencil");
+                      }}
+                      title={i === 0 ? "0 — background (erases)" : `paint with index ${i}`}
+                      className={cn(
+                        "size-7 border-2",
+                        i === 0 && "pixel-checker",
+                        brush === i && tool !== "eraser" ? "border-ring ring-2 ring-ring" : "border-input",
+                      )}
+                      style={i === 0 ? undefined : { background: color }}
+                    />
+                  ))}
+                </div>
+
+                <div className="overflow-auto">
+                  <PaintCanvas
+                    recipe={recipe}
+                    pixel={pixel}
+                    activeV={brush}
+                    tool={tool}
+                    symmetry={symmetry}
+                    showGrid={showGrid}
+                    onCommit={commitOps}
+                    onPick={(v) => {
+                      setActiveV(v);
+                      setTool(v === 0 ? "eraser" : "pencil");
+                    }}
+                  />
+                </div>
 
                 <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   <span>
-                    every stroke appends an op to the recipe — open <b>json</b> to watch
+                    b/e/g/l/r/o/i tools · x symmetry · shift = filled shapes — every gesture appends an op (see{" "}
+                    <b>json</b>)
                   </span>
                   <span className="ml-auto flex items-center gap-1.5">
                     new:
@@ -240,7 +336,7 @@ export function ForgeView({
             <>
               <textarea
                 value={source}
-                onChange={(e) => onSourceChange(e.target.value)}
+                onChange={(e) => onSourceChange(e.target.value, { coalesce: true })}
                 spellCheck={false}
                 rows={22}
                 className="w-full border-2 border-input bg-black/40 p-3 font-mono text-xs leading-relaxed outline-none focus:border-ring"
@@ -318,11 +414,11 @@ export function ForgeView({
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {recipe && (
-            <RecipeCanvas
-              recipe={recipe}
-              pixel={Math.max(2, Math.floor(160 / recipe.size))}
-              className="self-start border-2"
-            />
+            <div className="flex items-end gap-3">
+              <RecipeCanvas recipe={recipe} pixel={Math.max(2, Math.floor(128 / recipe.size))} className="border-2" />
+              <RecipeCanvas recipe={recipe} pixel={2} className="border" />
+              <RecipeCanvas recipe={recipe} pixel={1} className="border" />
+            </div>
           )}
 
           <div className="flex flex-wrap items-center gap-4 text-sm">
