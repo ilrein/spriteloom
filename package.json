@@ -1,0 +1,38 @@
+{
+  "name": "spriteloom",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "vite build && wrangler deploy",
+    "test": "bun test",
+    "check": "tsc --noEmit",
+    "sprites": "bun scripts/preview.ts"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.47.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/bun": "^1.3.14",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.8.0",
+    "vite": "^8.1.5",
+    "wrangler": "^4.114.0"
+  },
+  "dependencies": {
+    "better-auth": "^1.6.25",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "kysely": "^0.29.4",
+    "kysely-d1": "^0.4.0",
+    "lucide-react": "^1.26.0",
+    "radix-ui": "^1.6.6",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "tailwind-merge": "^3.6.0"
+  }
+}

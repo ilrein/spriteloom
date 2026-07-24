@@ -1,0 +1,132 @@
+import type { Recipe } from "./engine";
+
+// Example recipes in the Urizen/Kenney 1-bit spirit, lifted to small indexed
+// palettes: chunky silhouettes, carved details (v:0), symmetry via mirror,
+// darker indices for shade. They double as the gallery and as few-shot
+// material for agents reading /api/examples.
+
+export const EXAMPLES: Recipe[] = [
+  {
+    name: "skull",
+    size: 16,
+    palette: { colors: ["#151515", "#e8e4d0", "#cc4444"], transparent: true },
+    ops: [
+      { op: "rect", x: 3, y: 2, w: 10, h: 8 },
+      { op: "px", at: [[3, 2], [12, 2], [3, 9], [12, 9]], v: 0 },
+      { op: "rect", x: 5, y: 10, w: 6, h: 3 },
+      { op: "px", at: [[6, 11], [6, 12], [9, 11], [9, 12]], v: 0 },
+      { op: "rect", x: 5, y: 5, w: 2, h: 2, v: 0 },
+      { op: "rect", x: 9, y: 5, w: 2, h: 2, v: 0 },
+      { op: "px", at: [[6, 6], [9, 6]], v: 2 },
+      { op: "px", at: [[7, 8], [8, 8]], v: 0 },
+    ],
+  },
+  {
+    name: "sword",
+    size: 16,
+    palette: { colors: ["#151515", "#c8d0dc", "#8a6239", "#e0b040"], transparent: true },
+    ops: [
+      { op: "line", from: [5, 10], to: [12, 3] },
+      { op: "line", from: [6, 10], to: [13, 3] },
+      { op: "px", at: [[13, 2]] },
+      { op: "line", from: [3, 8], to: [7, 12], v: 3 },
+      { op: "line", from: [4, 8], to: [8, 12], v: 3 },
+      { op: "px", at: [[4, 11], [3, 12]], v: 2 },
+      { op: "rect", x: 2, y: 13, w: 2, h: 2, v: 3 },
+    ],
+  },
+  {
+    name: "potion",
+    size: 16,
+    palette: { colors: ["#151515", "#dce4e8", "#d04848", "#a07040"], transparent: true },
+    ops: [
+      { op: "ellipse", cx: 7, cy: 10, rx: 5, ry: 4 },
+      { op: "ellipse", cx: 7, cy: 11, rx: 3, ry: 2, v: 2 },
+      { op: "rect", x: 6, y: 3, w: 2, h: 5 },
+      { op: "rect", x: 5, y: 2, w: 3, h: 1 },
+      { op: "rect", x: 6, y: 1, w: 2, h: 2, v: 3 },
+      { op: "mirror", axis: "x" },
+      { op: "px", at: [[5, 10], [5, 11]], v: 1 },
+    ],
+  },
+  {
+    name: "slime",
+    size: 16,
+    palette: { colors: ["#151515", "#7ac74f", "#3e7a2e"], transparent: true },
+    ops: [
+      { op: "ellipse", cx: 7, cy: 10, rx: 6, ry: 4 },
+      { op: "ellipse", cx: 7, cy: 7, rx: 4, ry: 3 },
+      { op: "mirror", axis: "x" },
+      { op: "rect", x: 3, y: 12, w: 10, h: 2 },
+      { op: "clear", region: { x: 0, y: 14, w: 16, h: 2 } },
+      { op: "dither", x: 3, y: 12, w: 10, h: 2, pattern: "checker", v: 2 },
+      { op: "px", at: [[5, 8], [5, 9], [10, 8], [10, 9]], v: 2 },
+      { op: "px", at: [[7, 11], [8, 11]], v: 2 },
+    ],
+  },
+  {
+    name: "tree",
+    size: 16,
+    palette: { colors: ["#151515", "#6fae5a", "#8a6239", "#3f7a33"], transparent: true },
+    ops: [
+      { op: "ellipse", cx: 7, cy: 4, rx: 4, ry: 3 },
+      { op: "ellipse", cx: 7, cy: 7, rx: 6, ry: 3 },
+      { op: "mirror", axis: "x" },
+      { op: "scatter", x: 3, y: 3, w: 10, h: 6, density: 0.15, seed: 7, v: 3 },
+      { op: "rect", x: 7, y: 10, w: 2, h: 4, v: 2 },
+      { op: "line", from: [4, 14], to: [11, 14], v: 3 },
+    ],
+  },
+  {
+    name: "wall",
+    size: 16,
+    palette: { colors: ["#1a1a1a", "#9a9a8e", "#62625a"] },
+    ops: [
+      { op: "rect", x: 0, y: 0, w: 16, h: 16 },
+      { op: "line", from: [0, 2], to: [15, 2], v: 2 },
+      { op: "line", from: [0, 6], to: [15, 6], v: 2 },
+      { op: "line", from: [0, 10], to: [15, 10], v: 2 },
+      { op: "line", from: [0, 14], to: [15, 14], v: 2 },
+      { op: "line", from: [0, 3], to: [15, 3], v: 0 },
+      { op: "line", from: [0, 7], to: [15, 7], v: 0 },
+      { op: "line", from: [0, 11], to: [15, 11], v: 0 },
+      { op: "line", from: [0, 15], to: [15, 15], v: 0 },
+      { op: "rect", x: 3, y: 0, w: 1, h: 3, v: 0 },
+      { op: "rect", x: 11, y: 0, w: 1, h: 3, v: 0 },
+      { op: "rect", x: 7, y: 4, w: 1, h: 3, v: 0 },
+      { op: "rect", x: 3, y: 8, w: 1, h: 3, v: 0 },
+      { op: "rect", x: 11, y: 8, w: 1, h: 3, v: 0 },
+      { op: "rect", x: 7, y: 12, w: 1, h: 3, v: 0 },
+    ],
+  },
+  {
+    name: "key",
+    size: 16,
+    palette: { colors: ["#151515", "#e0b040", "#a07820"], transparent: true },
+    ops: [
+      { op: "ellipse", cx: 4, cy: 8, rx: 3, ry: 3, mode: "stroke" },
+      { op: "line", from: [8, 8], to: [14, 8] },
+      { op: "px", at: [[11, 9], [11, 10], [14, 9], [14, 10]] },
+      { op: "px", at: [[3, 11], [4, 11], [5, 11], [11, 10], [14, 10]], v: 2 },
+    ],
+  },
+  {
+    name: "heart",
+    size: 16,
+    palette: { colors: ["#151515", "#cc4444", "#f0a0a8"], transparent: true },
+    ops: [
+      { op: "ellipse", cx: 5, cy: 6, rx: 3, ry: 3 },
+      { op: "mirror", axis: "x" },
+      { op: "rect", x: 3, y: 8, w: 10, h: 1 },
+      { op: "rect", x: 4, y: 9, w: 8, h: 1 },
+      { op: "rect", x: 5, y: 10, w: 6, h: 1 },
+      { op: "rect", x: 6, y: 11, w: 4, h: 1 },
+      { op: "rect", x: 7, y: 12, w: 2, h: 1 },
+      { op: "px", at: [[4, 5], [5, 4]], v: 2 },
+    ],
+  },
+];
+
+export function findExample(name: string): Recipe | undefined {
+  return EXAMPLES.find((e) => e.name === name);
+}

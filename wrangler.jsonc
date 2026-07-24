@@ -1,0 +1,29 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "spriteloom",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-07-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "spriteloom.app", "custom_domain": true },
+    { "pattern": "www.spriteloom.app", "custom_domain": true }
+  ],
+  "assets": {
+    "binding": "ASSETS",
+    // worker-first everywhere so the www/workers.dev → spriteloom.app
+    // canonical redirect applies to page loads, not just /api/*
+    "run_worker_first": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bitloom",
+      "database_id": "3d6c325c-aa74-42ba-a16a-1a766b6f23b6",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}
