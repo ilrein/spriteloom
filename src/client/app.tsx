@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { LogIn, LogOut, Search } from "lucide-react";
-import { EXAMPLES } from "../engine/examples";
 import { Api, type SpriteItem } from "./api";
 import { AppSidebar } from "./components/app-sidebar";
 import { AuthDialog } from "./components/auth-dialog";
@@ -26,7 +25,16 @@ export type View = "sprites" | "forge" | "agent";
 
 export const VIEW_PATH: Record<View, string> = { sprites: "/", forge: "/forge", agent: "/agent" };
 
-const INITIAL_SOURCE = JSON.stringify(EXAMPLES[0], null, 2);
+const INITIAL_SOURCE = JSON.stringify(
+  {
+    name: "untitled",
+    size: 16,
+    palette: { colors: ["#151515", "#e0e0cc"], transparent: true },
+    ops: [],
+  },
+  null,
+  2,
+);
 
 interface History {
   stack: string[];
