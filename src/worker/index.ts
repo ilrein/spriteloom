@@ -32,6 +32,7 @@ interface Env {
   DB: D1Database;
   AI: { run(model: string, options: Record<string, unknown>): Promise<unknown> };
   BETTER_AUTH_SECRET: string;
+  ADMIN_SECRET?: string;
   WRITE_LIMIT?: RateLimit;
   AUTH_LIMIT?: RateLimit;
   GENERATE_LIMIT?: RateLimit;
@@ -512,10 +513,15 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
     return json({ errors: [`unknown format "${format}" (valid: png, vox, text)`] }, 400);
   }
 
+  // admin-only: manual trigger for OUR loombot (regular users bring their own
+  // agents via agent tokens). Answers 404 to anyone without the key so the
+  // endpoint stays invisible.
   if (path === "/api/generate" && request.method === "POST") {
-    const user = await getSessionUser(request, env, url);
-    if (!user) return json({ errors: ["sign in (or use an agent token) to trigger generation"] }, 401);
-    if (await overLimit(env.GENERATE_LIMIT, `gen:${user.id}`)) return TOO_MANY();
+    const key = request.headers.get("x-admin-key");
+    if (!env.ADMIN_SECRET || !key || key !== env.ADMIN_SECRET) {
+      return json({ errors: [`no route: ${request.method} ${path}`, "see GET /api/spec"] }, 404);
+    }
+    if (await overLimit(env.GENERATE_LIMIT, "gen:admin")) return TOO_MANY();
     const report = await generateBatch(env.AI, env.DB);
     return json(report);
   }
