@@ -101,6 +101,16 @@ export function AppSidebar({
           sprites are recipes, not pixels ·{" "}
           <a href="/api/spec" target="_blank" rel="noreferrer" className="underline">
             spec
+          </a>{" "}
+          ·{" "}
+          <a
+            href="https://github.com/ilrein/spriteloom"
+            target="_blank"
+            rel="noreferrer"
+            className="underline"
+            title="open source on GitHub (MIT)"
+          >
+            github
           </a>
         </p>
       </SidebarFooter>
