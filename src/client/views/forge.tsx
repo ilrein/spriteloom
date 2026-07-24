@@ -30,6 +30,8 @@ import { encodePng } from "../../engine/png";
 import { EXAMPLES } from "../../engine/examples";
 import { asRecipe, validateRecipe } from "../../engine/validate";
 import { Api } from "../api";
+import { encodeVox, spriteToVoxels } from "../../engine/voxel";
+import { IsoPreview } from "../components/iso-preview";
 import { PaintCanvas, type PaintTool } from "../components/paint-canvas";
 import { RecipeCanvas } from "../components/recipe-canvas";
 import { Tip } from "../components/tip";
@@ -97,6 +99,8 @@ export function ForgeView({
   const [newSize, setNewSize] = useState("16");
   const [showAscii, setShowAscii] = useState(false);
   const [exportScale, setExportScale] = useState("8");
+  const [voxelMode, setVoxelMode] = useState<"extrude" | "inflate">("inflate");
+  const [voxelDepth, setVoxelDepth] = useState("5");
   const [status, setStatus] = useState<string | null>(null);
 
   const { recipe, errors } = useMemo(() => parseSource(source), [source]);
@@ -534,6 +538,54 @@ export function ForgeView({
             <pre className="border-2 border-input p-2 text-[10px] leading-none tracking-[2px] text-muted-foreground">
               {toAscii(runRecipe(recipe))}
             </pre>
+          )}
+
+          {recipe && (
+            <div className="flex flex-col gap-2 border-t-2 pt-3">
+              <span className="text-xs tracking-[0.3em] text-muted-foreground">3D</span>
+              <IsoPreview recipe={recipe} mode={voxelMode} depth={Number(voxelDepth)} className="self-start" />
+              <div className="flex flex-wrap items-center gap-2">
+                <Select value={voxelMode} onValueChange={(v) => setVoxelMode(v as "extrude" | "inflate")}>
+                  <SelectTrigger size="sm" className="w-28">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="inflate">inflate</SelectItem>
+                    <SelectItem value="extrude">extrude</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={voxelDepth} onValueChange={setVoxelDepth}>
+                  <SelectTrigger size="sm" className="w-24">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["3", "4", "5", "6", "8", "10"].map((d) => (
+                      <SelectItem key={d} value={d}>
+                        depth {d}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (!recipe) return;
+                    const voxels = spriteToVoxels(recipe, voxelMode, Number(voxelDepth));
+                    const bytes = encodeVox(voxels, recipe.palette);
+                    const blob = new Blob([bytes as unknown as BlobPart], { type: "application/octet-stream" });
+                    const a = document.createElement("a");
+                    a.href = URL.createObjectURL(blob);
+                    a.download = `${recipe.name ?? "sprite"}.vox`;
+                    a.click();
+                    URL.revokeObjectURL(a.href);
+                  }}
+                >
+                  <Download className="size-4" /> .vox
+                </Button>
+                <span className="text-xs text-muted-foreground">opens in MagicaVoxel</span>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>

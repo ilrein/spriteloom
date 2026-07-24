@@ -123,3 +123,39 @@ export async function encodePng(grid: Grid, palette: Palette = {}, scale = 1): P
   }
   return out;
 }
+
+/** Encode an RGBA buffer as a truecolor+alpha PNG (used for iso renders). */
+export async function encodePngRgba(width: number, height: number, rgba: Uint8Array): Promise<Uint8Array> {
+  const rowBytes = width * 4;
+  const raw = new Uint8Array((rowBytes + 1) * height);
+  for (let y = 0; y < height; y++) {
+    const rowStart = y * (rowBytes + 1);
+    raw[rowStart] = 0; // filter: None
+    raw.set(rgba.subarray(y * rowBytes, (y + 1) * rowBytes), rowStart + 1);
+  }
+
+  const ihdr = new Uint8Array(13);
+  const view = new DataView(ihdr.buffer);
+  view.setUint32(0, width);
+  view.setUint32(4, height);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 6; // color type: RGBA
+  ihdr[10] = 0;
+  ihdr[11] = 0;
+  ihdr[12] = 0;
+
+  const chunks: Uint8Array[] = [
+    new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk("IHDR", ihdr),
+    chunk("IDAT", await zlibDeflate(raw)),
+    chunk("IEND", new Uint8Array(0)),
+  ];
+  const total = chunks.reduce((n, c) => n + c.length, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.length;
+  }
+  return out;
+}

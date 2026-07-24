@@ -4,7 +4,10 @@ import { EXAMPLES, findExample } from "../engine/examples";
 import { validateRecipe, asRecipe } from "../engine/validate";
 import { SPEC } from "../engine/spec";
 import { LOGO } from "../engine/logo";
+import { encodePngRgba } from "../engine/png";
+import { encodeVox, renderIso, scaleRgba, spriteToVoxels, voxelsToAscii, type VoxelMode } from "../engine/voxel";
 import { createAuth } from "./auth";
+import { generateBatch } from "./generate";
 
 interface D1Result<T = unknown> {
   results: T[];
@@ -23,6 +26,7 @@ interface D1Database {
 interface Env {
   ASSETS: { fetch(request: Request): Promise<Response> };
   DB: D1Database;
+  AI: { run(model: string, options: Record<string, unknown>): Promise<unknown> };
   BETTER_AUTH_SECRET: string;
 }
 
@@ -412,6 +416,58 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
     return respondWithRecipe(asRecipe(body), url);
   }
 
+  if (path === "/api/voxelize" && request.method === "POST") {
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return json({ errors: ["request body must be valid JSON"] }, 400);
+    }
+    // body is either a recipe, or {front, side} for carve mode
+    const wrapper = body as { front?: unknown; side?: unknown };
+    const mode = (url.searchParams.get("mode") ?? "extrude") as VoxelMode;
+    if (!["extrude", "inflate", "carve"].includes(mode)) {
+      return json({ errors: [`unknown mode "${mode}" (valid: extrude, inflate, carve)`] }, 400);
+    }
+    const frontInput = mode === "carve" ? wrapper.front : body;
+    const sideInput = mode === "carve" ? wrapper.side : undefined;
+    for (const [label, input] of [["front", frontInput], ...(mode === "carve" ? [["side", sideInput]] : [])] as const) {
+      const errors = validateRecipe(input);
+      if (errors.length > 0) return json({ errors: errors.map((e) => `${label}: ${e}`) }, 400);
+    }
+    const recipe = asRecipe(frontInput);
+    const depth = Math.max(2, Math.min(recipe.size, Number(url.searchParams.get("depth") ?? Math.round(recipe.size / 3))));
+    const voxels = spriteToVoxels(recipe, mode, depth, sideInput ? asRecipe(sideInput) : undefined);
+
+    const format = url.searchParams.get("format") ?? "png";
+    if (format === "text") {
+      return text(voxelsToAscii(voxels) + "\n");
+    }
+    if (format === "vox") {
+      return new Response(encodeVox(voxels, recipe.palette) as unknown as BodyInit, {
+        headers: {
+          "content-type": "application/octet-stream",
+          "content-disposition": `attachment; filename="${recipe.name ?? "sprite"}.vox"`,
+          ...CORS_HEADERS,
+        },
+      });
+    }
+    if (format === "png") {
+      const scale = Math.max(1, Math.min(16, Number(url.searchParams.get("scale") ?? "4")));
+      const img = scaleRgba(renderIso(voxels, recipe.palette), scale);
+      const bytes = await encodePngRgba(img.width, img.height, img.data);
+      return png(bytes, `${recipe.name ?? "sprite"}-iso`);
+    }
+    return json({ errors: [`unknown format "${format}" (valid: png, vox, text)`] }, 400);
+  }
+
+  if (path === "/api/generate" && request.method === "POST") {
+    const user = await getSessionUser(request, env, url);
+    if (!user) return json({ errors: ["sign in (or use an agent token) to trigger generation"] }, 401);
+    const report = await generateBatch(env.AI, env.DB);
+    return json(report);
+  }
+
   if (path.startsWith("/api/sprites")) {
     return handleSprites(request, env, url, path);
   }
@@ -448,5 +504,18 @@ export default {
       }
     }
     return env.ASSETS.fetch(request);
+  },
+
+  // themed sprite generation on a schedule — the feed grows on its own
+  async scheduled(_event: unknown, env: Env, ctx: { waitUntil(p: Promise<unknown>): void }): Promise<void> {
+    ctx.waitUntil(
+      generateBatch(env.AI, env.DB).then(
+        (report) =>
+          console.log(
+            `loombot: theme=${report.theme} published=${report.published.length} rejected=${report.rejected.length}`,
+          ),
+        (err) => console.error(`loombot failed: ${err instanceof Error ? err.message : String(err)}`),
+      ),
+    );
   },
 };
