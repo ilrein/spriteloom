@@ -8,6 +8,7 @@ import { validateRecipe, asRecipe } from "../engine/validate";
 
 export const LOOMBOT_USER_ID = "seed-user-loombot";
 const MODEL = "@cf/openai/gpt-oss-120b";
+const AI_GATEWAY = "spriteloom";
 const BATCH_TARGET = 6;
 
 const THEMES = [
@@ -60,7 +61,26 @@ Respond with ONLY a JSON object, no prose: {"sprites":[{"name":"...","tags":["..
 }
 
 interface AiBinding {
-  run(model: string, options: Record<string, unknown>): Promise<unknown>;
+  run(
+    model: string,
+    options: Record<string, unknown>,
+    config?: { gateway?: { id: string; skipCache?: boolean; metadata?: Record<string, string> } },
+  ): Promise<unknown>;
+}
+
+/** Route through the spriteloom AI Gateway (analytics/logs/rate control);
+ *  fall back to direct Workers AI if the gateway doesn't exist yet. */
+async function runModel(ai: AiBinding, options: Record<string, unknown>): Promise<unknown> {
+  try {
+    return await ai.run(MODEL, options, {
+      gateway: { id: AI_GATEWAY, skipCache: true, metadata: { app: "spriteloom", job: "loombot" } },
+    });
+  } catch (err) {
+    console.warn(
+      `AI Gateway "${AI_GATEWAY}" unavailable (${err instanceof Error ? err.message : String(err)}) — using direct Workers AI`,
+    );
+    return ai.run(MODEL, options);
+  }
 }
 
 interface D1Like {
@@ -98,7 +118,7 @@ export interface GenerationReport {
 
 export async function generateBatch(ai: AiBinding, db: D1Like): Promise<GenerationReport> {
   const pick = THEMES[Math.floor(Math.random() * THEMES.length)]!;
-  const result = await ai.run(MODEL, {
+  const result = await runModel(ai, {
     messages: [{ role: "user", content: prompt(pick.theme, pick.palette) }],
     max_tokens: 8000,
   });
@@ -143,9 +163,9 @@ export async function generateBatch(ai: AiBinding, db: D1Like): Promise<Generati
     statements.push(
       db
         .prepare(
-          `INSERT INTO sprite (id, userId, name, recipe, parentId, likeCount, createdAt, tags) VALUES (?, ?, ?, ?, NULL, 0, ?, ?)`,
+          `INSERT INTO sprite (id, userId, name, recipe, parentId, likeCount, createdAt, tags, model) VALUES (?, ?, ?, ?, NULL, 0, ?, ?, ?)`,
         )
-        .bind(id, LOOMBOT_USER_ID, name, JSON.stringify(recipe), Date.now(), JSON.stringify(tags)),
+        .bind(id, LOOMBOT_USER_ID, name, JSON.stringify(recipe), Date.now(), JSON.stringify(tags), MODEL),
       ...tags.map((tag) => db.prepare(`INSERT INTO sprite_tag (tag, spriteId) VALUES (?, ?)`).bind(tag, id)),
     );
     report.published.push({ id, name, tags });

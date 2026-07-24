@@ -28,6 +28,12 @@
   "ai": {
     "binding": "AI"
   },
+  "ratelimits": [
+    { "name": "WRITE_LIMIT", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } },
+    { "name": "AUTH_LIMIT", "namespace_id": "1002", "simple": { "limit": 10, "period": 60 } },
+    { "name": "GENERATE_LIMIT", "namespace_id": "1003", "simple": { "limit": 2, "period": 60 } },
+    { "name": "RENDER_LIMIT", "namespace_id": "1004", "simple": { "limit": 60, "period": 60 } }
+  ],
   "triggers": {
     "crons": ["0 */6 * * *"]
   },

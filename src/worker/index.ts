@@ -23,12 +23,34 @@ interface D1Database {
   batch(statements: D1PreparedStatement[]): Promise<unknown[]>;
 }
 
+interface RateLimit {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+}
+
 interface Env {
   ASSETS: { fetch(request: Request): Promise<Response> };
   DB: D1Database;
   AI: { run(model: string, options: Record<string, unknown>): Promise<unknown> };
   BETTER_AUTH_SECRET: string;
+  WRITE_LIMIT?: RateLimit;
+  AUTH_LIMIT?: RateLimit;
+  GENERATE_LIMIT?: RateLimit;
+  RENDER_LIMIT?: RateLimit;
 }
+
+/** Returns true when the request should be rejected. Missing bindings (local dev) allow everything. */
+async function overLimit(limiter: RateLimit | undefined, key: string): Promise<boolean> {
+  if (!limiter) return false;
+  try {
+    return !(await limiter.limit({ key })).success;
+  } catch {
+    return false;
+  }
+}
+
+const clientIp = (request: Request): string => request.headers.get("cf-connecting-ip") ?? "unknown";
+
+const TOO_MANY = () => json({ errors: ["rate limited — slow down and retry shortly"] }, 429);
 
 const MAX_RECIPE_BYTES = 8 * 1024;
 const MAX_NAME_LENGTH = 40;
@@ -163,6 +185,7 @@ interface SpriteRow {
   username: string | null;
   userId: string;
   tags: string;
+  model: string | null;
 }
 
 function spriteToJson(row: SpriteRow, likedIds?: Set<string>): Record<string, unknown> {
@@ -175,14 +198,25 @@ function spriteToJson(row: SpriteRow, likedIds?: Set<string>): Record<string, un
     createdAt: row.createdAt,
     username: row.username,
     tags: JSON.parse(row.tags || "[]"),
+    model: row.model,
     liked: likedIds ? likedIds.has(row.id) : undefined,
   };
 }
 
 const SPRITE_SELECT = `
-  SELECT s.id, s.name, s.recipe, s.parentId, s.likeCount, s.createdAt, s.userId, s.tags, u.username
+  SELECT s.id, s.name, s.recipe, s.parentId, s.likeCount, s.createdAt, s.userId, s.tags, s.model, u.username
   FROM sprite s JOIN user u ON u.id = s.userId
 `;
+
+const MODEL_PATTERN = /^[a-zA-Z0-9@/._: -]{1,64}$/;
+
+/** null = human via web UI; "unknown" = agent that didn't declare a model. */
+function resolveModel(declared: unknown, viaAgentToken: boolean): string | null {
+  if (typeof declared === "string" && MODEL_PATTERN.test(declared.trim())) {
+    return declared.trim();
+  }
+  return viaAgentToken ? "unknown" : null;
+}
 
 const TAG_PATTERN = /^[a-z0-9][a-z0-9-]{0,19}$/;
 const MAX_TAGS = 5;
@@ -205,6 +239,7 @@ async function listSprites(request: Request, env: Env, url: URL): Promise<Respon
   const page = Math.max(0, Number(url.searchParams.get("page") ?? "0") | 0);
   const byUser = url.searchParams.get("user");
   const byTag = url.searchParams.get("tag")?.toLowerCase() ?? null;
+  const byModel = url.searchParams.get("model");
   const query = url.searchParams.get("q")?.trim() ?? null;
 
   let sql = SPRITE_SELECT;
@@ -218,6 +253,13 @@ async function listSprites(request: Request, env: Env, url: URL): Promise<Respon
   if (byUser) {
     where.push(`u.username = ?`);
     params.push(byUser);
+  }
+  if (byModel) {
+    if (byModel === "human") where.push(`s.model IS NULL`);
+    else {
+      where.push(`s.model = ?`);
+      params.push(byModel);
+    }
   }
   if (query) {
     where.push(`(s.name LIKE ? OR u.username LIKE ? OR s.tags LIKE ?)`);
@@ -248,15 +290,18 @@ async function listSprites(request: Request, env: Env, url: URL): Promise<Respon
 }
 
 async function publishSprite(request: Request, env: Env, url: URL): Promise<Response> {
-  const user = await getSessionUser(request, env, url);
+  const tokenUser = await getTokenUser(request, env);
+  const user = tokenUser ?? (await getCookieUser(request, env, url));
   if (!user) return json({ errors: ["sign in to publish"] }, 401);
+  if (await overLimit(env.WRITE_LIMIT, `write:${user.id}`)) return TOO_MANY();
 
-  let body: { name?: unknown; recipe?: unknown; parentId?: unknown; tags?: unknown };
+  let body: { name?: unknown; recipe?: unknown; parentId?: unknown; tags?: unknown; model?: unknown };
   try {
     body = (await request.json()) as typeof body;
   } catch {
     return json({ errors: ["request body must be valid JSON"] }, 400);
   }
+  const model = resolveModel(body.model, tokenUser !== null);
 
   const name = typeof body.name === "string" ? body.name.trim() : "";
   if (name.length === 0 || name.length > MAX_NAME_LENGTH) {
@@ -280,18 +325,19 @@ async function publishSprite(request: Request, env: Env, url: URL): Promise<Resp
   const id = crypto.randomUUID();
   const statements = [
     env.DB.prepare(
-      `INSERT INTO sprite (id, userId, name, recipe, parentId, likeCount, createdAt, tags) VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
-    ).bind(id, user.id, name, recipeText, parentId, Date.now(), JSON.stringify(tags)),
+      `INSERT INTO sprite (id, userId, name, recipe, parentId, likeCount, createdAt, tags, model) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+    ).bind(id, user.id, name, recipeText, parentId, Date.now(), JSON.stringify(tags), model),
     ...tags.map((tag) => env.DB.prepare(`INSERT INTO sprite_tag (tag, spriteId) VALUES (?, ?)`).bind(tag, id)),
   ];
   await env.DB.batch(statements);
 
-  return json({ id, name, username: user.username, tags }, 201);
+  return json({ id, name, username: user.username, tags, model }, 201);
 }
 
 async function toggleLike(request: Request, env: Env, url: URL, spriteId: string): Promise<Response> {
   const user = await getSessionUser(request, env, url);
   if (!user) return json({ errors: ["sign in to like"] }, 401);
+  if (await overLimit(env.WRITE_LIMIT, `write:${user.id}`)) return TOO_MANY();
 
   const sprite = await env.DB.prepare(`SELECT id FROM sprite WHERE id = ?`).bind(spriteId).first();
   if (!sprite) return json({ errors: ["no such sprite"] }, 404);
@@ -366,6 +412,9 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   }
 
   if (path.startsWith("/api/auth/")) {
+    if (request.method === "POST" && (await overLimit(env.AUTH_LIMIT, `auth:${clientIp(request)}`))) {
+      return TOO_MANY();
+    }
     const auth = createAuth(env.DB, url.origin, env.BETTER_AUTH_SECRET);
     return auth.handler(request);
   }
@@ -403,6 +452,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   }
 
   if (path === "/api/render" && request.method === "POST") {
+    if (await overLimit(env.RENDER_LIMIT, `render:${clientIp(request)}`)) return TOO_MANY();
     let body: unknown;
     try {
       body = await request.json();
@@ -417,6 +467,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   }
 
   if (path === "/api/voxelize" && request.method === "POST") {
+    if (await overLimit(env.RENDER_LIMIT, `render:${clientIp(request)}`)) return TOO_MANY();
     let body: unknown;
     try {
       body = await request.json();
@@ -464,6 +515,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (path === "/api/generate" && request.method === "POST") {
     const user = await getSessionUser(request, env, url);
     if (!user) return json({ errors: ["sign in (or use an agent token) to trigger generation"] }, 401);
+    if (await overLimit(env.GENERATE_LIMIT, `gen:${user.id}`)) return TOO_MANY();
     const report = await generateBatch(env.AI, env.DB);
     return json(report);
   }

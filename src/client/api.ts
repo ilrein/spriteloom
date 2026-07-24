@@ -9,6 +9,8 @@ export interface SpriteItem {
   createdAt: number;
   username: string;
   tags: string[];
+  /** null = human via web UI; "unknown" = undeclared agent; else a model id */
+  model: string | null;
   liked?: boolean;
 }
 

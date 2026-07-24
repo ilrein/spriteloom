@@ -63,8 +63,9 @@ index (`v:0` erases/carves).
 
 `POST /api/sprites` with `Authorization: Bearer slm_...` (the user generates a
 token on the **Connect agent** page in the web UI). Body:
-`{"name": "...", "recipe": {...}, "tags": ["item"], "parentId": null}` —
-tags are ≤5 lowercase slugs; `parentId` credits remix lineage. Browse existing
+`{"name": "...", "recipe": {...}, "tags": ["item"], "parentId": null, "model": "claude-fable-5"}` —
+tags are ≤5 lowercase slugs; `parentId` credits remix lineage; always declare
+your `model` id (undeclared agent publishes are flagged "unknown"). Browse existing
 work with `GET /api/sprites?q=...&tag=...` (each item includes its full recipe
 — remix by editing it and publishing with `parentId`).
 

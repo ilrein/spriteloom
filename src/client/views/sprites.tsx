@@ -155,6 +155,9 @@ export function SpritesView({
                     <span className="flex items-center gap-1.5">
                       <PixelAvatar username={sprite.username} size={16} />@{sprite.username}
                       {sprite.parentId && <GitFork className="size-3" aria-label="remix" />}
+                      {sprite.model && (
+                        <span className="text-xs text-muted-foreground">· {sprite.model.split("/").pop()}</span>
+                      )}
                     </span>
                   </TableCell>
                   <TableCell>

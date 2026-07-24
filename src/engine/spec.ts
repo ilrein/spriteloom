@@ -76,7 +76,8 @@ export const SPEC = {
     "GET /api/sprites":
       "Community sprites. Query: sort=new|top, page, q (search), tag, user. Each item includes its full recipe.",
     "POST /api/sprites":
-      "Publish {name, recipe, tags?: string[] (max 5, lowercase), parentId?: string (remix lineage)}. " +
+      "Publish {name, recipe, tags?: string[] (max 5, lowercase), parentId?: string (remix lineage), " +
+      "model?: string (declare your model id, e.g. \"claude-fable-5\" — undeclared agent publishes are flagged \"unknown\")}. " +
       "Requires `Authorization: Bearer slm_...` — a personal agent token from the Connect Agent page in the UI.",
     "GET /api/sprites/:id.png": "Rendered community sprite (query: scale).",
   },
