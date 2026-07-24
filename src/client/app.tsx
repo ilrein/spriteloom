@@ -213,6 +213,8 @@ export function App() {
               onPublished={() => {
                 setRemixParentId(null);
                 void refreshTags();
+                // land on the feed with the fresh sprite at the top
+                navigate("/");
               }}
               signedIn={me !== null}
               onNeedAuth={() => setAuthOpen(true)}

@@ -4,6 +4,7 @@ import { Api, type SpriteItem } from "../api";
 import { RecipeCanvas } from "../components/recipe-canvas";
 import { PixelAvatar } from "../components/pixel-avatar";
 import { SpriteCard } from "../components/sprite-card";
+import { Tip } from "../components/tip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -94,22 +95,26 @@ export function SpritesView({
         {q && <span className="text-sm text-muted-foreground">searching “{q}”</span>}
         {user && <span className="text-sm text-muted-foreground">by @{user}</span>}
         <div className="ml-auto flex gap-1">
-          <Button
-            size="icon-sm"
-            variant={layout === "grid" ? "default" : "outline"}
-            onClick={() => setLayout("grid")}
-            aria-label="grid view"
-          >
-            <LayoutGrid className="size-4" />
-          </Button>
-          <Button
-            size="icon-sm"
-            variant={layout === "table" ? "default" : "outline"}
-            onClick={() => setLayout("table")}
-            aria-label="table view"
-          >
-            <Table2 className="size-4" />
-          </Button>
+          <Tip label="grid view">
+            <Button
+              size="icon-sm"
+              variant={layout === "grid" ? "default" : "outline"}
+              onClick={() => setLayout("grid")}
+              aria-label="grid view"
+            >
+              <LayoutGrid className="size-4" />
+            </Button>
+          </Tip>
+          <Tip label="table view">
+            <Button
+              size="icon-sm"
+              variant={layout === "table" ? "default" : "outline"}
+              onClick={() => setLayout("table")}
+              aria-label="table view"
+            >
+              <Table2 className="size-4" />
+            </Button>
+          </Tip>
         </div>
       </div>
 

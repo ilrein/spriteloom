@@ -32,6 +32,7 @@ import { asRecipe, validateRecipe } from "../../engine/validate";
 import { Api } from "../api";
 import { PaintCanvas, type PaintTool } from "../components/paint-canvas";
 import { RecipeCanvas } from "../components/recipe-canvas";
+import { Tip } from "../components/tip";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -174,9 +175,7 @@ export function ForgeView({
       .filter(Boolean);
     try {
       await Api.publish(recipe.name?.trim() || "untitled", recipe, tags, remixParentId);
-      setStatus(`published "${recipe.name ?? "untitled"}" — see Sprites`);
-      setTimeout(() => setStatus(null), 4000);
-      onPublished();
+      onPublished(); // navigates to the feed — the new sprite is the first card
     } catch (err) {
       setStatus(`publish failed: ${err instanceof Error ? err.message : String(err)}`);
       setTimeout(() => setStatus(null), 6000);
@@ -209,80 +208,92 @@ export function ForgeView({
               <>
                 <div className="flex flex-wrap items-center gap-1">
                   {TOOLS.map(({ id, icon: Icon, label, key }) => (
-                    <Button
-                      key={id}
-                      size="icon-sm"
-                      variant={tool === id ? "default" : "outline"}
-                      onClick={() => setTool(id)}
-                      aria-label={label}
-                      title={`${label} (${key})`}
-                    >
-                      <Icon className="size-4" />
-                    </Button>
+                    <Tip key={id} label={`${label} (${key})`}>
+                      <Button
+                        size="icon-sm"
+                        variant={tool === id ? "default" : "outline"}
+                        onClick={() => setTool(id)}
+                        aria-label={label}
+                      >
+                        <Icon className="size-4" />
+                      </Button>
+                    </Tip>
                   ))}
                   <span className="mx-1 h-6 border-l-2" />
-                  <Button
-                    size="icon-sm"
-                    variant={symmetry ? "default" : "outline"}
-                    onClick={() => setSymmetry(!symmetry)}
-                    aria-label="mirror symmetry"
-                    title="mirror symmetry (x)"
-                  >
-                    <FlipHorizontal2 className="size-4" />
-                  </Button>
-                  <Button
-                    size="icon-sm"
-                    variant={showGrid ? "default" : "outline"}
-                    onClick={() => setShowGrid(!showGrid)}
-                    aria-label="toggle grid"
-                    title="toggle grid"
-                  >
-                    <Grid3x3 className="size-4" />
-                  </Button>
-                  <span className="mx-1 h-6 border-l-2" />
-                  <Button size="icon-sm" variant="outline" onClick={() => setZoom((z) => z - 1)} aria-label="zoom out" title="zoom out">
-                    <ZoomOut className="size-4" />
-                  </Button>
-                  <Button size="icon-sm" variant="outline" onClick={() => setZoom((z) => z + 1)} aria-label="zoom in" title="zoom in">
-                    <ZoomIn className="size-4" />
-                  </Button>
-                  <span className="ml-auto flex gap-1">
-                    <Button size="icon-sm" variant="outline" onClick={onUndo} disabled={!canUndo} aria-label="undo" title="undo (⌘z)">
-                      <Undo2 className="size-4" />
-                    </Button>
-                    <Button size="icon-sm" variant="outline" onClick={onRedo} disabled={!canRedo} aria-label="redo" title="redo (⌘⇧z)">
-                      <Redo2 className="size-4" />
-                    </Button>
+                  <Tip label="mirror symmetry (x)">
                     <Button
                       size="icon-sm"
-                      variant="outline"
-                      onClick={() => updateRecipe((r) => void (r.ops = []))}
-                      disabled={recipe.ops.length === 0}
-                      aria-label="clear all ops"
-                      title="clear all ops"
+                      variant={symmetry ? "default" : "outline"}
+                      onClick={() => setSymmetry(!symmetry)}
+                      aria-label="mirror symmetry"
                     >
-                      <Trash2 className="size-4" />
+                      <FlipHorizontal2 className="size-4" />
                     </Button>
+                  </Tip>
+                  <Tip label="toggle grid">
+                    <Button
+                      size="icon-sm"
+                      variant={showGrid ? "default" : "outline"}
+                      onClick={() => setShowGrid(!showGrid)}
+                      aria-label="toggle grid"
+                    >
+                      <Grid3x3 className="size-4" />
+                    </Button>
+                  </Tip>
+                  <span className="mx-1 h-6 border-l-2" />
+                  <Tip label="zoom out">
+                    <Button size="icon-sm" variant="outline" onClick={() => setZoom((z) => z - 1)} aria-label="zoom out">
+                      <ZoomOut className="size-4" />
+                    </Button>
+                  </Tip>
+                  <Tip label="zoom in">
+                    <Button size="icon-sm" variant="outline" onClick={() => setZoom((z) => z + 1)} aria-label="zoom in">
+                      <ZoomIn className="size-4" />
+                    </Button>
+                  </Tip>
+                  <span className="ml-auto flex gap-1">
+                    <Tip label="undo (⌘z)">
+                      <Button size="icon-sm" variant="outline" onClick={onUndo} disabled={!canUndo} aria-label="undo">
+                        <Undo2 className="size-4" />
+                      </Button>
+                    </Tip>
+                    <Tip label="redo (⌘⇧z)">
+                      <Button size="icon-sm" variant="outline" onClick={onRedo} disabled={!canRedo} aria-label="redo">
+                        <Redo2 className="size-4" />
+                      </Button>
+                    </Tip>
+                    <Tip label="clear all ops">
+                      <Button
+                        size="icon-sm"
+                        variant="outline"
+                        onClick={() => updateRecipe((r) => void (r.ops = []))}
+                        disabled={recipe.ops.length === 0}
+                        aria-label="clear all ops"
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </Tip>
                   </span>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-1">
                   <span className="mr-1 text-xs tracking-[0.3em] text-muted-foreground">INK</span>
                   {palette.colors.map((color, i) => (
-                    <button
-                      key={i}
-                      onClick={() => {
-                        setActiveV(i);
-                        if (tool === "eraser") setTool("pencil");
-                      }}
-                      title={i === 0 ? "0 — background (erases)" : `paint with index ${i}`}
-                      className={cn(
-                        "size-7 border-2",
-                        i === 0 && "pixel-checker",
-                        brush === i && tool !== "eraser" ? "border-ring ring-2 ring-ring" : "border-input",
-                      )}
-                      style={i === 0 ? undefined : { background: color }}
-                    />
+                    <Tip key={i} label={i === 0 ? "index 0 — background (erases)" : `paint with index ${i}`}>
+                      <button
+                        onClick={() => {
+                          setActiveV(i);
+                          if (tool === "eraser") setTool("pencil");
+                        }}
+                        aria-label={i === 0 ? "background ink" : `ink ${i}`}
+                        className={cn(
+                          "size-7 border-2",
+                          i === 0 && "pixel-checker",
+                          brush === i && tool !== "eraser" ? "border-ring ring-2 ring-ring" : "border-input",
+                        )}
+                        style={i === 0 ? undefined : { background: color }}
+                      />
+                    </Tip>
                   ))}
                 </div>
 

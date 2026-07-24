@@ -2,6 +2,7 @@ import { Download, GitFork, Heart } from "lucide-react";
 import type { SpriteItem } from "../api";
 import { RecipeCanvas } from "./recipe-canvas";
 import { PixelAvatar } from "./pixel-avatar";
+import { Tip } from "./tip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
@@ -56,11 +57,13 @@ export function SpriteCard({
           <GitFork className="size-3.5" />
           remix
         </Button>
-        <Button size="icon-sm" variant="ghost" asChild className="ml-auto" title="open PNG">
-          <a href={`/api/sprites/${sprite.id}.png?scale=8`} target="_blank" rel="noreferrer" aria-label="open PNG">
-            <Download className="size-3.5" />
-          </a>
-        </Button>
+        <Tip label="open PNG">
+          <Button size="icon-sm" variant="ghost" asChild className="ml-auto">
+            <a href={`/api/sprites/${sprite.id}.png?scale=8`} target="_blank" rel="noreferrer" aria-label="open PNG">
+              <Download className="size-3.5" />
+            </a>
+          </Button>
+        </Tip>
       </CardFooter>
     </Card>
   );
