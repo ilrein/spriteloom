@@ -39,6 +39,7 @@ interface Env {
   AI: { run(model: string, options: Record<string, unknown>): Promise<unknown> };
   BETTER_AUTH_SECRET: string;
   ADMIN_SECRET?: string;
+  OPENAI_API_KEY?: string;
   WRITE_LIMIT?: RateLimit;
   AUTH_LIMIT?: RateLimit;
   GENERATE_LIMIT?: RateLimit;
@@ -642,7 +643,7 @@ async function handleApi(request: Request, env: Env, url: URL, ctx: Ctx): Promis
       return json({ errors: [`no route: ${request.method} ${path}`, "see GET /api/spec"] }, 404);
     }
     if (await overLimit(env.GENERATE_LIMIT, "gen:admin")) return TOO_MANY();
-    const report = await generateBatch(env.AI, env.DB);
+    const report = await generateBatch(env.AI, env.DB, env.OPENAI_API_KEY);
     return json(report);
   }
 
@@ -691,7 +692,7 @@ export default {
   // themed sprite generation on a schedule — the feed grows on its own
   async scheduled(_event: unknown, env: Env, ctx: { waitUntil(p: Promise<unknown>): void }): Promise<void> {
     ctx.waitUntil(
-      generateBatch(env.AI, env.DB).then(
+      generateBatch(env.AI, env.DB, env.OPENAI_API_KEY).then(
         (report) =>
           console.log(
             `loombot: theme=${report.theme} published=${report.published.length} rejected=${report.rejected.length}`,

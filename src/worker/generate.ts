@@ -8,7 +8,10 @@ import { validateRecipe, asRecipe } from "../engine/validate";
 
 export const LOOMBOT_USER_ID = "seed-user-loombot";
 const MODEL = "@cf/moonshotai/kimi-k2.7-code";
+const OPENAI_MODEL = "gpt-5.6-sol";
+const OPENAI_REASONING_EFFORT = "medium";
 const AI_GATEWAY = "spriteloom";
+const ACCOUNT_ID = "a9c9538ffdbcd1f606f241c5d9a22512";
 const BATCH_TARGET = 6;
 
 const THEMES = [
@@ -66,6 +69,26 @@ interface AiBinding {
     options: Record<string, unknown>,
     config?: { gateway?: { id: string; skipCache?: boolean; metadata?: Record<string, string> } },
   ): Promise<unknown>;
+}
+
+/** OpenAI via the spriteloom AI Gateway (falls back to api.openai.com). */
+async function runOpenAI(key: string, content: string): Promise<string> {
+  const body = JSON.stringify({
+    model: OPENAI_MODEL,
+    messages: [{ role: "user", content }],
+    reasoning_effort: OPENAI_REASONING_EFFORT,
+    max_completion_tokens: 24000,
+  });
+  const headers = { authorization: `Bearer ${key}`, "content-type": "application/json" };
+  const gatewayUrl = `https://gateway.ai.cloudflare.com/v1/${ACCOUNT_ID}/${AI_GATEWAY}/openai/chat/completions`;
+  let res = await fetch(gatewayUrl, { method: "POST", headers, body }).catch(() => null);
+  if (!res || !res.ok) {
+    res = await fetch("https://api.openai.com/v1/chat/completions", { method: "POST", headers, body });
+  }
+  if (!res.ok) {
+    throw new Error(`openai ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  }
+  return aiText(await res.json());
 }
 
 /** Route through the spriteloom AI Gateway (analytics/logs/rate control);
@@ -177,15 +200,20 @@ export interface GenerationReport {
   collection?: { id: string; name: string };
 }
 
-export async function generateBatch(ai: AiBinding, db: D1Like): Promise<GenerationReport> {
+export async function generateBatch(ai: AiBinding, db: D1Like, openaiKey?: string): Promise<GenerationReport> {
   const pick = THEMES[Math.floor(Math.random() * THEMES.length)]!;
-  const result = await runModel(ai, {
-    messages: [{ role: "user", content: prompt(pick.theme, pick.palette) }],
-    // generous budget: reasoning models spend tokens thinking before the JSON
-    max_tokens: 24000,
-  });
+  const activeModel = openaiKey ? OPENAI_MODEL : MODEL;
+  const raw = openaiKey
+    ? await runOpenAI(openaiKey, prompt(pick.theme, pick.palette))
+    : aiText(
+        await runModel(ai, {
+          messages: [{ role: "user", content: prompt(pick.theme, pick.palette) }],
+          // generous budget: reasoning models spend tokens thinking before the JSON
+          max_tokens: 24000,
+        }),
+      );
 
-  const parsed = extractJson(aiText(result)) as { sprites?: unknown[] };
+  const parsed = extractJson(raw) as { sprites?: unknown[] };
   const candidates = Array.isArray(parsed.sprites) ? parsed.sprites : [];
   if (candidates.length === 0) {
     throw new Error("model output parsed but contained no sprites");
@@ -230,7 +258,7 @@ export async function generateBatch(ai: AiBinding, db: D1Like): Promise<Generati
         .prepare(
           `INSERT INTO sprite (id, userId, name, recipe, parentId, likeCount, createdAt, tags, model) VALUES (?, ?, ?, ?, NULL, 0, ?, ?, ?)`,
         )
-        .bind(id, LOOMBOT_USER_ID, name, JSON.stringify(recipe), Date.now(), JSON.stringify(tags), MODEL),
+        .bind(id, LOOMBOT_USER_ID, name, JSON.stringify(recipe), Date.now(), JSON.stringify(tags), activeModel),
       ...tags.map((tag) => db.prepare(`INSERT INTO sprite_tag (tag, spriteId) VALUES (?, ?)`).bind(tag, id)),
     );
     report.published.push({ id, name, tags });
