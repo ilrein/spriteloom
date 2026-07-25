@@ -1,5 +1,6 @@
-import { Bot, Hammer, LayoutGrid, Tag } from "lucide-react";
+import { Bot, Hammer, LayoutGrid, LibraryBig } from "lucide-react";
 import { LOGO } from "../../engine/logo";
+import type { CollectionItem } from "../api";
 import { RecipeCanvas } from "./recipe-canvas";
 import {
   Sidebar,
@@ -19,15 +20,15 @@ import type { View } from "../app";
 export function AppSidebar({
   view,
   onNavigate,
-  tags,
-  activeTag,
-  onTag,
+  collections,
+  activeCollection,
+  onCollection,
 }: {
   view: View;
   onNavigate: (view: View) => void;
-  tags: { tag: string; count: number }[];
-  activeTag: string | null;
-  onTag: (tag: string | null) => void;
+  collections: CollectionItem[];
+  activeCollection: string | null;
+  onCollection: (id: string | null) => void;
 }) {
   return (
     <Sidebar collapsible="icon" className="border-r-2">
@@ -76,18 +77,22 @@ export function AppSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {tags.length > 0 && (
+        {collections.length > 0 && (
           <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-            <SidebarGroupLabel>TAGS</SidebarGroupLabel>
+            <SidebarGroupLabel>COLLECTIONS</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {tags.map(({ tag, count }) => (
-                  <SidebarMenuItem key={tag}>
-                    <SidebarMenuButton isActive={activeTag === tag} onClick={() => onTag(activeTag === tag ? null : tag)}>
-                      <Tag />
-                      <span>{tag}</span>
+                {collections.slice(0, 12).map((collection) => (
+                  <SidebarMenuItem key={collection.id}>
+                    <SidebarMenuButton
+                      isActive={activeCollection === collection.id}
+                      onClick={() => onCollection(activeCollection === collection.id ? null : collection.id)}
+                      title={collection.description ?? collection.name}
+                    >
+                      <LibraryBig />
+                      <span className="truncate">{collection.name}</span>
                     </SidebarMenuButton>
-                    <SidebarMenuBadge>{count}</SidebarMenuBadge>
+                    <SidebarMenuBadge>{collection.count}</SidebarMenuBadge>
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>

@@ -8,7 +8,12 @@ import { encodePngRgba } from "../engine/png";
 import { encodeVox, renderIso, scaleRgba, spriteToVoxels, voxelsToAscii, type VoxelMode } from "../engine/voxel";
 import { renderOgCard } from "../engine/og";
 import { createAuth } from "./auth";
+import { autoCategorize } from "./categorize";
 import { generateBatch } from "./generate";
+
+interface Ctx {
+  waitUntil(promise: Promise<unknown>): void;
+}
 
 interface D1Result<T = unknown> {
   results: T[];
@@ -242,6 +247,7 @@ async function listSprites(request: Request, env: Env, url: URL): Promise<Respon
   const byUser = url.searchParams.get("user");
   const byTag = url.searchParams.get("tag")?.toLowerCase() ?? null;
   const byModel = url.searchParams.get("model");
+  const byCollection = url.searchParams.get("collection");
   const query = url.searchParams.get("q")?.trim() ?? null;
 
   let sql = SPRITE_SELECT;
@@ -251,6 +257,11 @@ async function listSprites(request: Request, env: Env, url: URL): Promise<Respon
     sql += ` JOIN sprite_tag t ON t.spriteId = s.id`;
     where.push(`t.tag = ?`);
     params.push(byTag);
+  }
+  if (byCollection) {
+    sql += ` JOIN collection_sprite col ON col.spriteId = s.id`;
+    where.push(`col.collectionId = ?`);
+    params.push(byCollection);
   }
   if (byUser) {
     where.push(`u.username = ?`);
@@ -291,7 +302,97 @@ async function listSprites(request: Request, env: Env, url: URL): Promise<Respon
   return json({ sprites: rows.map((r) => spriteToJson(r, likedIds)), page, hasMore, me: user?.username ?? null });
 }
 
-async function publishSprite(request: Request, env: Env, url: URL): Promise<Response> {
+async function handleCollections(request: Request, env: Env, url: URL, path: string): Promise<Response> {
+  if (path === "/api/collections" && request.method === "GET") {
+    const { results: collections } = await env.DB.prepare(
+      `SELECT c.id, c.name, c.description, c.createdAt, u.username,
+         (SELECT COUNT(*) FROM collection_sprite cs WHERE cs.collectionId = c.id) AS count
+       FROM collection c JOIN user u ON u.id = c.userId
+       ORDER BY c.createdAt DESC LIMIT 40`,
+    ).all<{ id: string; name: string; description: string | null; createdAt: number; username: string; count: number }>();
+
+    const { results: previews } = await env.DB.prepare(
+      `SELECT collectionId, recipe FROM (
+         SELECT cs.collectionId, s.recipe, ROW_NUMBER() OVER (PARTITION BY cs.collectionId ORDER BY cs.addedAt, s.createdAt) rn
+         FROM collection_sprite cs JOIN sprite s ON s.id = cs.spriteId
+       ) WHERE rn <= 4`,
+    ).all<{ collectionId: string; recipe: string }>();
+
+    const previewMap = new Map<string, unknown[]>();
+    for (const p of previews) {
+      const list = previewMap.get(p.collectionId) ?? [];
+      list.push(JSON.parse(p.recipe));
+      previewMap.set(p.collectionId, list);
+    }
+    return json({
+      collections: collections.map((c) => ({ ...c, preview: previewMap.get(c.id) ?? [] })),
+    });
+  }
+
+  if (path === "/api/collections" && request.method === "POST") {
+    const user = await getSessionUser(request, env, url);
+    if (!user) return json({ errors: ["sign in to create a collection"] }, 401);
+    if (await overLimit(env.WRITE_LIMIT, `write:${user.id}`)) return TOO_MANY();
+    let body: { name?: unknown; description?: unknown };
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return json({ errors: ["request body must be valid JSON"] }, 400);
+    }
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    if (name.length === 0 || name.length > 40) return json({ errors: ["name must be 1-40 characters"] }, 400);
+    const description = typeof body.description === "string" ? body.description.trim().slice(0, 140) : null;
+    const id = crypto.randomUUID();
+    await env.DB.prepare(`INSERT INTO collection (id, userId, name, description, createdAt) VALUES (?, ?, ?, ?, ?)`)
+      .bind(id, user.id, name, description, Date.now())
+      .run();
+    return json({ id, name, description }, 201);
+  }
+
+  const addMatch = path.match(/^\/api\/collections\/([0-9a-zA-Z-]{4,64})\/sprites$/);
+  if (addMatch && request.method === "POST") {
+    const user = await getSessionUser(request, env, url);
+    if (!user) return json({ errors: ["sign in first"] }, 401);
+    if (await overLimit(env.WRITE_LIMIT, `write:${user.id}`)) return TOO_MANY();
+    const owner = await env.DB.prepare(`SELECT userId FROM collection WHERE id = ?`)
+      .bind(addMatch[1])
+      .first<{ userId: string }>();
+    if (!owner) return json({ errors: ["no such collection"] }, 404);
+    if (owner.userId !== user.id) return json({ errors: ["not your collection"] }, 403);
+    let body: { spriteId?: unknown };
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return json({ errors: ["request body must be valid JSON"] }, 400);
+    }
+    const spriteId = typeof body.spriteId === "string" ? body.spriteId : "";
+    const sprite = await env.DB.prepare(`SELECT id FROM sprite WHERE id = ?`).bind(spriteId).first();
+    if (!sprite) return json({ errors: ["no such sprite"] }, 404);
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO collection_sprite (collectionId, spriteId, addedAt) VALUES (?, ?, ?)`,
+    )
+      .bind(addMatch[1], spriteId, Date.now())
+      .run();
+    return json({ added: spriteId, collection: addMatch[1] }, 201);
+  }
+
+  const itemMatch = path.match(/^\/api\/collections\/([0-9a-zA-Z-]{4,64})$/);
+  if (itemMatch && request.method === "DELETE") {
+    const user = await getSessionUser(request, env, url);
+    if (!user) return json({ errors: ["sign in first"] }, 401);
+    const owner = await env.DB.prepare(`SELECT userId FROM collection WHERE id = ?`)
+      .bind(itemMatch[1])
+      .first<{ userId: string }>();
+    if (!owner) return json({ errors: ["no such collection"] }, 404);
+    if (owner.userId !== user.id) return json({ errors: ["not your collection"] }, 403);
+    await env.DB.prepare(`DELETE FROM collection WHERE id = ?`).bind(itemMatch[1]).run();
+    return json({ deleted: itemMatch[1] });
+  }
+
+  return json({ errors: [`no route: ${request.method} ${path}`, "see GET /api/spec"] }, 404);
+}
+
+async function publishSprite(request: Request, env: Env, url: URL, ctx: Ctx): Promise<Response> {
   const tokenUser = await getTokenUser(request, env);
   const user = tokenUser ?? (await getCookieUser(request, env, url));
   if (!user) return json({ errors: ["sign in to publish"] }, 401);
@@ -333,6 +434,12 @@ async function publishSprite(request: Request, env: Env, url: URL): Promise<Resp
   ];
   await env.DB.batch(statements);
 
+  // no tags? ask a vision model what it sees (best-effort, off the hot path)
+  if (tags.length === 0) {
+    const recipe = asRecipe(body.recipe);
+    ctx.waitUntil(autoCategorize(env.AI, env.DB, id, recipe));
+  }
+
   return json({ id, name, username: user.username, tags, model }, 201);
 }
 
@@ -370,10 +477,10 @@ async function toggleLike(request: Request, env: Env, url: URL, spriteId: string
   return json({ liked: !existing, likeCount: row?.likeCount ?? 0 });
 }
 
-async function handleSprites(request: Request, env: Env, url: URL, path: string): Promise<Response> {
+async function handleSprites(request: Request, env: Env, url: URL, path: string, ctx: Ctx): Promise<Response> {
   if (path === "/api/sprites") {
     if (request.method === "GET") return listSprites(request, env, url);
-    if (request.method === "POST") return publishSprite(request, env, url);
+    if (request.method === "POST") return publishSprite(request, env, url, ctx);
   }
 
   const likeMatch = path.match(/^\/api\/sprites\/([0-9a-f-]{36})\/like$/);
@@ -406,7 +513,7 @@ async function handleSprites(request: Request, env: Env, url: URL, path: string)
   return json({ errors: [`no route: ${request.method} ${path}`, "see GET /api/spec"] }, 404);
 }
 
-async function handleApi(request: Request, env: Env, url: URL): Promise<Response> {
+async function handleApi(request: Request, env: Env, url: URL, ctx: Ctx): Promise<Response> {
   const path = url.pathname;
 
   if (request.method === "OPTIONS") {
@@ -540,7 +647,11 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   }
 
   if (path.startsWith("/api/sprites")) {
-    return handleSprites(request, env, url, path);
+    return handleSprites(request, env, url, path, ctx);
+  }
+
+  if (path.startsWith("/api/collections")) {
+    return handleCollections(request, env, url, path);
   }
 
   if (path === "/api/agent-token") {
@@ -561,7 +672,7 @@ const CANONICAL_HOST = "spriteloom.app";
 const REDIRECT_HOSTS = new Set(["www.spriteloom.app", "spriteloom.ilia-reingold.workers.dev"]);
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: Ctx): Promise<Response> {
     const url = new URL(request.url);
     if (REDIRECT_HOSTS.has(url.hostname)) {
       url.hostname = CANONICAL_HOST;
@@ -569,7 +680,7 @@ export default {
     }
     if (url.pathname.startsWith("/api/")) {
       try {
-        return await handleApi(request, env, url);
+        return await handleApi(request, env, url, ctx);
       } catch (err) {
         return json({ errors: [`internal error: ${err instanceof Error ? err.message : String(err)}`] }, 500);
       }

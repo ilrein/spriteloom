@@ -1,30 +1,46 @@
-import { Bot, Download, GitFork, Heart } from "lucide-react";
-import type { SpriteItem } from "../api";
+import { Bot, Download, FolderPlus, GitFork, Heart } from "lucide-react";
+import type { CollectionItem, SpriteItem } from "../api";
 import { RecipeCanvas } from "./recipe-canvas";
 import { PixelAvatar } from "./pixel-avatar";
 import { Tip } from "./tip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
 export function SpriteCard({
   sprite,
+  myCollections,
   onLike,
   onRemix,
   onTag,
+  onCollect,
 }: {
   sprite: SpriteItem;
+  myCollections: CollectionItem[];
   onLike: (sprite: SpriteItem) => void;
   onRemix: (sprite: SpriteItem) => void;
   onTag: (tag: string) => void;
+  onCollect: (sprite: SpriteItem, collectionId: string | "new") => void;
 }) {
   return (
-    <Card className="gap-3 border-2 py-3">
-      <CardContent className="flex flex-col items-center gap-2 px-3">
-        <RecipeCanvas recipe={sprite.recipe} pixel={Math.max(2, Math.floor(112 / sprite.recipe.size))} className="border" />
-        <div className="w-full">
-          <div className="truncate font-bold" title={sprite.name}>
+    <Card className="gap-4 border-2 py-5">
+      <CardContent className="flex flex-col items-center gap-4 px-5">
+        <RecipeCanvas
+          recipe={sprite.recipe}
+          pixel={Math.max(2, Math.floor(176 / sprite.recipe.size))}
+          className="border"
+        />
+        <div className="w-full space-y-1.5">
+          <div className="truncate text-base font-bold" title={sprite.name}>
             {sprite.name}
           </div>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -41,7 +57,7 @@ export function SpriteCard({
             )}
           </div>
           {sprite.tags.length > 0 && (
-            <div className="mt-1.5 flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-1 pt-0.5">
               {sprite.tags.map((tag) => (
                 <Badge
                   key={tag}
@@ -56,7 +72,7 @@ export function SpriteCard({
           )}
         </div>
       </CardContent>
-      <CardFooter className="flex-wrap gap-1.5 px-3">
+      <CardFooter className="flex-wrap gap-1.5 px-5">
         <Button size="sm" variant={sprite.liked ? "default" : "outline"} onClick={() => onLike(sprite)}>
           <Heart className={cn("size-3.5", sprite.liked && "fill-current")} />
           {sprite.likeCount}
@@ -65,13 +81,34 @@ export function SpriteCard({
           <GitFork className="size-3.5" />
           remix
         </Button>
-        <Tip label="open PNG">
-          <Button size="icon-sm" variant="ghost" asChild className="ml-auto">
-            <a href={`/api/sprites/${sprite.id}.png?scale=8`} target="_blank" rel="noreferrer" aria-label="open PNG">
-              <Download className="size-3.5" />
-            </a>
-          </Button>
-        </Tip>
+        <span className="ml-auto flex gap-1">
+          <DropdownMenu>
+            <Tip label="add to collection">
+              <DropdownMenuTrigger asChild>
+                <Button size="icon-sm" variant="ghost" aria-label="add to collection">
+                  <FolderPlus className="size-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+            </Tip>
+            <DropdownMenuContent align="end" className="border-2">
+              <DropdownMenuLabel>add to collection</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {myCollections.map((c) => (
+                <DropdownMenuItem key={c.id} onClick={() => onCollect(sprite, c.id)}>
+                  {c.name}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuItem onClick={() => onCollect(sprite, "new")}>＋ new collection…</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Tip label="open PNG">
+            <Button size="icon-sm" variant="ghost" asChild>
+              <a href={`/api/sprites/${sprite.id}.png?scale=8`} target="_blank" rel="noreferrer" aria-label="open PNG">
+                <Download className="size-3.5" />
+              </a>
+            </Button>
+          </Tip>
+        </span>
       </CardFooter>
     </Card>
   );

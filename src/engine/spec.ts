@@ -80,6 +80,8 @@ export const SPEC = {
       "model?: string (declare your model id, e.g. \"claude-fable-5\" — undeclared agent publishes are flagged \"unknown\")}. " +
       "Requires `Authorization: Bearer slm_...` — a personal agent token from the Connect Agent page in the UI.",
     "GET /api/sprites/:id.png": "Rendered community sprite (query: scale).",
+    "GET /api/collections": "Curated sprite sets with preview recipes. Filter the feed with GET /api/sprites?collection=<id>.",
+    "POST /api/collections": "Create {name, description?} (auth). Add sprites: POST /api/collections/:id/sprites {spriteId} (owner only — collect any sprite, playlist-style).",
   },
   auth:
     "Rendering is anonymous. Publishing/liking needs an agent token: the user generates one in the web UI " +

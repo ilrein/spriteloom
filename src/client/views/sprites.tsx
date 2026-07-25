@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import { GitFork, Heart, LayoutGrid, Table2, X } from "lucide-react";
-import { Api, type SpriteItem } from "../api";
+import { GitFork, Heart, LayoutGrid, LibraryBig, Table2, X } from "lucide-react";
+import { Api, type CollectionItem, type SpriteItem } from "../api";
 import { RecipeCanvas } from "../components/recipe-canvas";
 import { PixelAvatar } from "../components/pixel-avatar";
 import { SpriteCard } from "../components/sprite-card";
 import { Tip } from "../components/tip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
@@ -14,7 +16,12 @@ export function SpritesView({
   q,
   tag,
   user,
+  collection,
+  collectionName,
+  myCollections,
+  onCollectionsChanged,
   onTag,
+  onCollection,
   onRemix,
   onNeedAuth,
   signedIn,
@@ -22,7 +29,12 @@ export function SpritesView({
   q: string;
   tag: string | null;
   user: string | null;
+  collection: string | null;
+  collectionName: string | null;
+  myCollections: CollectionItem[];
+  onCollectionsChanged: () => void;
   onTag: (tag: string | null) => void;
+  onCollection: (id: string | null) => void;
   onRemix: (sprite: SpriteItem) => void;
   onNeedAuth: () => void;
   signedIn: boolean;
@@ -34,6 +46,8 @@ export function SpritesView({
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [collectDialog, setCollectDialog] = useState<{ spriteId: string } | null>(null);
+  const [newCollectionName, setNewCollectionName] = useState("");
 
   const load = useCallback(
     async (nextPage: number, replace: boolean) => {
@@ -46,6 +60,7 @@ export function SpritesView({
           q: q || undefined,
           tag: tag ?? undefined,
           user: user ?? undefined,
+          collection: collection ?? undefined,
         });
         setSprites((prev) => (replace ? data.sprites : [...prev, ...data.sprites]));
         setPage(nextPage);
@@ -56,7 +71,7 @@ export function SpritesView({
         setLoading(false);
       }
     },
-    [sort, q, tag, user],
+    [sort, q, tag, user, collection],
   );
 
   useEffect(() => {
@@ -78,8 +93,42 @@ export function SpritesView({
     }
   }
 
+  async function addToCollection(collectionId: string, spriteId: string) {
+    try {
+      await Api.addToCollection(collectionId, spriteId);
+      onCollectionsChanged();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function createAndAdd() {
+    const name = newCollectionName.trim();
+    if (!name || !collectDialog) return;
+    try {
+      const created = await Api.createCollection(name);
+      await Api.addToCollection(created.id, collectDialog.spriteId);
+      onCollectionsChanged();
+    } finally {
+      setCollectDialog(null);
+      setNewCollectionName("");
+    }
+  }
+
+  function handleCollect(sprite: SpriteItem, collectionId: string | "new") {
+    if (!signedIn) {
+      onNeedAuth();
+      return;
+    }
+    if (collectionId === "new") {
+      setCollectDialog({ spriteId: sprite.id });
+      return;
+    }
+    void addToCollection(collectionId, sprite.id);
+  }
+
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" variant={sort === "new" ? "default" : "outline"} onClick={() => setSort("new")}>
           NEW
@@ -87,6 +136,11 @@ export function SpritesView({
         <Button size="sm" variant={sort === "top" ? "default" : "outline"} onClick={() => setSort("top")}>
           TOP
         </Button>
+        {collection && (
+          <Badge variant="secondary" className="cursor-pointer gap-1" onClick={() => onCollection(null)}>
+            <LibraryBig className="size-3" /> {collectionName ?? "collection"} <X className="size-3" />
+          </Badge>
+        )}
         {tag && (
           <Badge variant="secondary" className="cursor-pointer gap-1" onClick={() => onTag(null)}>
             #{tag} <X className="size-3" />
@@ -125,9 +179,17 @@ export function SpritesView({
       )}
 
       {layout === "grid" ? (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-4">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-6">
           {sprites.map((sprite) => (
-            <SpriteCard key={sprite.id} sprite={sprite} onLike={toggleLike} onRemix={onRemix} onTag={(t) => onTag(t)} />
+            <SpriteCard
+              key={sprite.id}
+              sprite={sprite}
+              myCollections={myCollections}
+              onLike={toggleLike}
+              onRemix={onRemix}
+              onTag={(t) => onTag(t)}
+              onCollect={handleCollect}
+            />
           ))}
         </div>
       ) : (
@@ -202,6 +264,32 @@ export function SpritesView({
           {loading ? "loading…" : "MORE"}
         </Button>
       )}
+
+      <Dialog open={collectDialog !== null} onOpenChange={(open) => !open && setCollectDialog(null)}>
+        <DialogContent className="max-w-sm border-2">
+          <DialogHeader>
+            <DialogTitle className="tracking-[0.3em]">NEW COLLECTION</DialogTitle>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void createAndAdd();
+            }}
+            className="grid gap-3"
+          >
+            <Input
+              value={newCollectionName}
+              onChange={(e) => setNewCollectionName(e.target.value)}
+              placeholder="dungeon starter pack"
+              maxLength={40}
+              autoFocus
+            />
+            <Button type="submit" disabled={!newCollectionName.trim()}>
+              create & add sprite
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -174,6 +174,7 @@ export interface GenerationReport {
   theme: string;
   published: { id: string; name: string; tags: string[] }[];
   rejected: { name: string; reason: string }[];
+  collection?: { id: string; name: string };
 }
 
 export async function generateBatch(ai: AiBinding, db: D1Like): Promise<GenerationReport> {
@@ -236,5 +237,23 @@ export async function generateBatch(ai: AiBinding, db: D1Like): Promise<Generati
   }
 
   if (statements.length > 0) await db.batch(statements);
+
+  // each themed batch is a collection — the batches ARE the sets
+  if (report.published.length > 0) {
+    const collectionId = crypto.randomUUID();
+    const day = new Date().toISOString().slice(5, 10).replace("-", "/");
+    const name = `${pick.theme} set ${day}`;
+    await db.batch([
+      db
+        .prepare(`INSERT INTO collection (id, userId, name, description, createdAt) VALUES (?, ?, ?, ?, ?)`)
+        .bind(collectionId, LOOMBOT_USER_ID, name, `generated ${pick.theme} biome set`, Date.now()),
+      ...report.published.map((p) =>
+        db
+          .prepare(`INSERT INTO collection_sprite (collectionId, spriteId, addedAt) VALUES (?, ?, ?)`)
+          .bind(collectionId, p.id, Date.now()),
+      ),
+    ]);
+    report.collection = { id: collectionId, name };
+  }
   return report;
 }

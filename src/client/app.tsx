@@ -9,7 +9,7 @@ function GithubIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-import { Api, type SpriteItem } from "./api";
+import { Api, type CollectionItem, type SpriteItem } from "./api";
 import { AppSidebar } from "./components/app-sidebar";
 import { AuthDialog } from "./components/auth-dialog";
 import { PixelAvatar } from "./components/pixel-avatar";
@@ -63,11 +63,12 @@ export function App() {
   const tag = searchParams.get("tag");
   const query = searchParams.get("q") ?? "";
   const byUser = searchParams.get("user");
+  const collectionId = searchParams.get("collection");
 
   const [me, setMe] = useState<string | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [searchInput, setSearchInput] = useState(query);
-  const [tags, setTags] = useState<{ tag: string; count: number }[]>([]);
+  const [collections, setCollections] = useState<CollectionItem[]>([]);
   const [remixParentId, setRemixParentId] = useState<string | null>(null);
   const [draftTags, setDraftTags] = useState("");
 
@@ -105,19 +106,19 @@ export function App() {
     }
   }, []);
 
-  const refreshTags = useCallback(async () => {
+  const refreshCollections = useCallback(async () => {
     try {
-      const data = await Api.listTags();
-      setTags(data.tags);
+      const data = await Api.listCollections();
+      setCollections(data.collections);
     } catch {
-      /* sidebar tags are decorative — ignore */
+      /* sidebar collections are decorative — ignore */
     }
   }, []);
 
   useEffect(() => {
     void refreshSession();
-    void refreshTags();
-  }, [refreshSession, refreshTags]);
+    void refreshCollections();
+  }, [refreshSession, refreshCollections]);
 
   useEffect(() => {
     setSearchInput(query);
@@ -130,19 +131,28 @@ export function App() {
     navigate(VIEW_PATH.forge);
   }
 
-  function spritesUrl(next: { q?: string | null; tag?: string | null; user?: string | null }): string {
+  function spritesUrl(next: {
+    q?: string | null;
+    tag?: string | null;
+    user?: string | null;
+    collection?: string | null;
+  }): string {
     const params = new URLSearchParams();
     const q = next.q === undefined ? query : next.q;
     const t = next.tag === undefined ? tag : next.tag;
     const u = next.user === undefined ? byUser : next.user;
+    const c = next.collection === undefined ? collectionId : next.collection;
     if (q) params.set("q", q);
     if (t) params.set("tag", t);
     if (u) params.set("user", u);
+    if (c) params.set("collection", c);
     const search = params.toString();
     return search ? `/?${search}` : "/";
   }
 
-  const handleTag = (next: string | null) => navigate(spritesUrl({ tag: next }));
+  const handleTag = (next: string | null) => navigate(spritesUrl({ tag: next, collection: null }));
+  const handleCollection = (next: string | null) =>
+    navigate(spritesUrl({ collection: next, tag: null, q: null, user: null }));
 
   function submitSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -159,9 +169,9 @@ export function App() {
       <AppSidebar
         view={view}
         onNavigate={(v) => navigate(VIEW_PATH[v])}
-        tags={tags}
-        activeTag={tag}
-        onTag={handleTag}
+        collections={collections}
+        activeCollection={collectionId}
+        onCollection={handleCollection}
       />
       <SidebarInset>
         <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b-2 bg-background px-4">
@@ -222,7 +232,7 @@ export function App() {
           )}
         </header>
 
-        <main className="flex-1 p-4">
+        <main className="flex-1 p-6 lg:p-8">
           {view === "forge" ? (
             <ForgeView
               source={source}
@@ -236,7 +246,7 @@ export function App() {
               remixParentId={remixParentId}
               onPublished={() => {
                 setRemixParentId(null);
-                void refreshTags();
+                void refreshCollections();
                 // land on the feed with the fresh sprite at the top
                 navigate("/");
               }}
@@ -248,7 +258,12 @@ export function App() {
               q={query}
               tag={tag}
               user={byUser}
+              collection={collectionId}
+              collectionName={collections.find((c) => c.id === collectionId)?.name ?? null}
+              myCollections={collections.filter((c) => c.username === me)}
+              onCollectionsChanged={() => void refreshCollections()}
               onTag={handleTag}
+              onCollection={handleCollection}
               onRemix={handleRemix}
               onNeedAuth={() => setAuthOpen(true)}
               signedIn={me !== null}

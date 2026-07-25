@@ -21,6 +21,16 @@ export interface FeedPage {
   me: string | null;
 }
 
+export interface CollectionItem {
+  id: string;
+  name: string;
+  description: string | null;
+  createdAt: number;
+  username: string;
+  count: number;
+  preview: Recipe[];
+}
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     headers: init?.body ? { "content-type": "application/json" } : undefined,
@@ -48,13 +58,35 @@ export const Api = {
 
   signOut: () => call("/api/auth/sign-out", { method: "POST", body: "{}" }),
 
-  listSprites: (opts: { sort: "new" | "top"; page: number; q?: string; tag?: string; user?: string }) => {
+  listSprites: (opts: {
+    sort: "new" | "top";
+    page: number;
+    q?: string;
+    tag?: string;
+    user?: string;
+    collection?: string;
+  }) => {
     const params = new URLSearchParams({ sort: opts.sort, page: String(opts.page) });
     if (opts.q) params.set("q", opts.q);
     if (opts.tag) params.set("tag", opts.tag);
     if (opts.user) params.set("user", opts.user);
+    if (opts.collection) params.set("collection", opts.collection);
     return call<FeedPage>(`/api/sprites?${params}`);
   },
+
+  listCollections: () => call<{ collections: CollectionItem[] }>("/api/collections"),
+
+  createCollection: (name: string, description?: string) =>
+    call<{ id: string; name: string }>("/api/collections", {
+      method: "POST",
+      body: JSON.stringify({ name, description }),
+    }),
+
+  addToCollection: (collectionId: string, spriteId: string) =>
+    call<{ added: string }>(`/api/collections/${collectionId}/sprites`, {
+      method: "POST",
+      body: JSON.stringify({ spriteId }),
+    }),
 
   publish: (name: string, recipe: Recipe, tags: string[], parentId: string | null) =>
     call<{ id: string }>("/api/sprites", {
