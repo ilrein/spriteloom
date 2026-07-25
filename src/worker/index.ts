@@ -6,6 +6,7 @@ import { SPEC } from "../engine/spec";
 import { LOGO } from "../engine/logo";
 import { encodePngRgba } from "../engine/png";
 import { encodeVox, renderIso, scaleRgba, spriteToVoxels, voxelsToAscii, type VoxelMode } from "../engine/voxel";
+import { renderOgCard } from "../engine/og";
 import { createAuth } from "./auth";
 import { generateBatch } from "./generate";
 
@@ -422,6 +423,18 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
 
   if (path === "/api/spec" && request.method === "GET") {
     return json(SPEC);
+  }
+
+  if (path === "/api/og.png" && request.method === "GET") {
+    const card = renderOgCard();
+    const bytes = await encodePngRgba(card.width, card.height, card.data);
+    return new Response(bytes as unknown as BodyInit, {
+      headers: {
+        "content-type": "image/png",
+        "cache-control": "public, max-age=86400",
+        ...CORS_HEADERS,
+      },
+    });
   }
 
   if (path === "/api/logo.png" && request.method === "GET") {
