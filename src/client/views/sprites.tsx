@@ -179,7 +179,7 @@ export function SpritesView({
       )}
 
       {layout === "grid" ? (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-6">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-4">
           {sprites.map((sprite) => (
             <SpriteCard
               key={sprite.id}

@@ -32,15 +32,15 @@ export function SpriteCard({
   onCollect: (sprite: SpriteItem, collectionId: string | "new") => void;
 }) {
   return (
-    <Card className="gap-4 border-2 py-5">
-      <CardContent className="flex flex-col items-center gap-4 px-5">
+    <Card className="gap-2.5 border-2 py-3">
+      <CardContent className="flex flex-col items-center gap-2.5 px-3">
         <RecipeCanvas
           recipe={sprite.recipe}
-          pixel={Math.max(2, Math.floor(176 / sprite.recipe.size))}
+          pixel={Math.max(2, Math.floor(112 / sprite.recipe.size))}
           className="border"
         />
-        <div className="w-full space-y-1.5">
-          <div className="truncate text-base font-bold" title={sprite.name}>
+        <div className="w-full space-y-1">
+          <div className="truncate text-sm font-bold" title={sprite.name}>
             {sprite.name}
           </div>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -62,7 +62,7 @@ export function SpriteCard({
                 <Badge
                   key={tag}
                   variant="outline"
-                  className="cursor-pointer hover:bg-accent"
+                  className="cursor-pointer px-1.5 py-0 text-[10px] hover:bg-accent"
                   onClick={() => onTag(tag)}
                 >
                   {tag}
@@ -72,15 +72,16 @@ export function SpriteCard({
           )}
         </div>
       </CardContent>
-      <CardFooter className="flex-wrap gap-1.5 px-5">
+      <CardFooter className="gap-1 px-3">
         <Button size="sm" variant={sprite.liked ? "default" : "outline"} onClick={() => onLike(sprite)}>
           <Heart className={cn("size-3.5", sprite.liked && "fill-current")} />
           {sprite.likeCount}
         </Button>
-        <Button size="sm" variant="outline" onClick={() => onRemix(sprite)}>
-          <GitFork className="size-3.5" />
-          remix
-        </Button>
+        <Tip label="remix">
+          <Button size="icon-sm" variant="outline" onClick={() => onRemix(sprite)} aria-label="remix">
+            <GitFork className="size-3.5" />
+          </Button>
+        </Tip>
         <span className="ml-auto flex gap-1">
           <DropdownMenu>
             <Tip label="add to collection">

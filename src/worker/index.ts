@@ -672,9 +672,43 @@ async function handleApi(request: Request, env: Env, url: URL, ctx: Ctx): Promis
 const CANONICAL_HOST = "spriteloom.app";
 const REDIRECT_HOSTS = new Set(["www.spriteloom.app", "spriteloom.ilia-reingold.workers.dev"]);
 
+// Vulnerability scanners are the largest single slice of zone traffic — WordPress
+// probes, xmlrpc, and hunting for committed secrets. None of it can match a real
+// route: there is no PHP, no admin panel, and nothing is served from dotfiles.
+// Without this they get the SPA fallback, i.e. a 200 and a few KB of HTML each.
+const SCANNER_MARKERS = [
+  "wp-admin",
+  "wp-login",
+  "wp-content",
+  "wp-includes",
+  "wlwmanifest",
+  "phpmyadmin",
+  "phpunit",
+  "/cgi-bin/",
+  "/vendor/",
+  "/autodiscover/",
+];
+
+export function isScannerProbe(pathname: string): boolean {
+  const path = pathname.toLowerCase();
+  // ACME challenges and security.txt live under a dotted segment and are legitimate
+  if (path.startsWith("/.well-known/")) return false;
+  // no PHP anywhere in this app, so any .php request is a probe by definition
+  if (path.endsWith(".php")) return true;
+  // /.git/config, /.env, /.aws/credentials, /.ssh/id_rsa, …
+  if (path.split("/").some((seg) => seg.startsWith(".") && seg !== ".well-known")) return true;
+  return SCANNER_MARKERS.some((marker) => path.includes(marker));
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: Ctx): Promise<Response> {
     const url = new URL(request.url);
+    if (isScannerProbe(url.pathname)) {
+      return new Response("not found\n", {
+        status: 404,
+        headers: { "content-type": "text/plain", "cache-control": "no-store" },
+      });
+    }
     if (REDIRECT_HOSTS.has(url.hostname)) {
       url.hostname = CANONICAL_HOST;
       return Response.redirect(url.toString(), 301);
